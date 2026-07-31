@@ -1,0 +1,1 @@
+.login-page { align-items:center; display:flex; justify-content:center; min-height:100dvh; padding:24px; }.login-card { display:grid; gap:24px; max-width:440px; padding:32px; width:100%; }.login-brand { align-items:center; color:#2563eb; display:flex; gap:10px; }.login-brand svg { background:#2563eb; border-radius:10px; color:#fff; padding:7px; }
