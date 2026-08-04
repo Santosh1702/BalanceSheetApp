@@ -4,6 +4,7 @@ import { UserRole } from '../types/auth'
 const allowedUserSchema = z.object({
   email: z.email('Each allowed user must have a valid email address.').transform((email) => email.trim().toLowerCase()),
   role: z.enum([UserRole.Admin, UserRole.Member]),
+  person: z.enum(['Sagar', 'Tejas']).optional(),
 })
 
 const environmentSchema = z.object({
@@ -36,8 +37,13 @@ export class AuthConfigService {
   get allowedUsers(): readonly AllowedUser[] { return this.result.success ? this.result.data.allowedUsers : [] }
   get errors() { return this.result.success ? [] : this.result.error.issues.map((issue) => issue.message) }
 
+  getProfileForEmail(email: string) {
+    const normalizedEmail = email.trim().toLowerCase()
+    return this.allowedUsers.find((user) => user.email === normalizedEmail)
+  }
+
   getRoleForEmail(email: string) {
-    return this.allowedUsers.find((user) => user.email === email.trim().toLowerCase())?.role
+    return this.getProfileForEmail(email)?.role
   }
 }
 

@@ -1,1 +1,18 @@
-.transactions-page { display:grid; gap:24px; }.transactions-page__heading { align-items:flex-start; display:flex; flex-direction:column; gap:16px; justify-content:space-between; }.transactions-table { display:grid; gap:0; overflow:hidden; }.transaction-row { align-items:center; border-bottom:1px solid rgb(100 116 139 / 14%); display:grid; gap:12px; grid-template-columns:1fr auto; padding:16px; }.transaction-row:last-child { border-bottom:0; }.amount { font-weight:700; }.amount--deposit { color:#16a34a; }.amount--withdrawal { color:#dc2626; }.transaction-note { display:none; }.transaction-form { display:grid; gap:16px; padding-top:8px; }@media (min-width:720px) { .transactions-page__heading { flex-direction:row; }.transaction-row { grid-template-columns:1.2fr .8fr 1fr auto; }.transaction-note { display:block; } }
+.transactions-page { display:grid; gap:24px; }
+.transactions-page__heading { align-items:flex-start; display:flex; flex-direction:column; gap:16px; justify-content:space-between; }
+.transactions-page__actions { display:flex; gap:8px; justify-content:flex-end; }
+.transactions-table { display:grid; gap:0; overflow:hidden; }
+.transaction-row { align-items:center; border-bottom:1px solid rgb(100 116 139 / 14%); display:grid; gap:12px; grid-template-columns:1fr auto; padding:16px; }
+.transaction-row:last-child { border-bottom:0; }
+.transaction-empty { padding:24px; }
+.amount { font-weight:700; }
+.amount--deposit { color:#16a34a; }
+.amount--money-given { color:#dc2626; }
+.transaction-note { display:none; }
+.transaction-form { display:grid; gap:16px; padding-top:8px; }
+
+@media (min-width:720px) {
+  .transactions-page__heading { flex-direction:row; }
+  .transaction-row { grid-template-columns:1.2fr .8fr 1fr auto; }
+  .transaction-note { display:block; }
+}

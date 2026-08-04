@@ -1,0 +1,120 @@
+[1mdiff --git a/.env.example b/.env.example[m
+[1mindex a50daaf..6e8cbf4 100644[m
+[1m--- a/.env.example[m
+[1m+++ b/.env.example[m
+[36m@@ -2,4 +2,5 @@[m
+ VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com[m
+ VITE_API_BASE_URL=https://script.google.com/macros/s/your-deployment-id/exec[m
+ # JSON list of all approved users. Add or remove users without changing source code.[m
+[31m-VITE_ALLOWED_USERS=[{"email":"santosh@gmail.com","role":"admin"},{"email":"sagar@gmail.com","role":"member"},{"email":"tejas@gmail.com","role":"member"}][m
+[32m+[m[32m# For member accounts, set the person field to the ledger participant name.[m
+[32m+[m[32mVITE_ALLOWED_USERS=[{"email":"santosh@gmail.com","role":"admin"},{"email":"sagar@gmail.com","role":"member","person":"Sagar"},{"email":"tejas@gmail.com","role":"member","person":"Tejas"}][m
+[1mdiff --git a/apps-script/Code.gs b/apps-script/Code.gs[m
+[1mindex b3b9bba..ce2964f 100644[m
+[1m--- a/apps-script/Code.gs[m
+[1m+++ b/apps-script/Code.gs[m
+[36m@@ -1,7 +1,8 @@[m
+[31m-/** Pocket Ledger Google Apps Script API. Configure SCRIPT_PROPERTY SHEET_ID before deployment. */[m
+[32m+[m[32m/** BalanceSheetApp Google Apps Script API. Configure SCRIPT_PROPERTY SHEET_ID before deployment. */[m
+ const SHEET_NAMES = Object.freeze({ TRANSACTIONS: 'Transactions', USERS: 'Users', SETTINGS: 'Settings', AUDIT: 'AuditLog' });[m
+[31m-const TRANSACTION_TYPES = Object.freeze({ DEPOSIT: 'DEPOSIT', WITHDRAWAL: 'WITHDRAWAL' });[m
+[32m+[m[32mconst TRANSACTION_TYPES = Object.freeze({ DEPOSIT: 'DEPOSIT', MONEY_GIVEN: 'MONEY_GIVEN' });[m
+ const ROLES = Object.freeze({ ADMIN: 'admin', MEMBER: 'member' });[m
+[32m+[m[32mconst PERSONS = Object.freeze({ SAGAR: 'Sagar', TEJAS: 'Tejas' });[m
+ [m
+ function doGet(event) { return handleRequest_(event.parameter || {}); }[m
+ function doPost(event) { return handleRequest_(JSON.parse(event.postData && event.postData.contents || '{}')); }[m
+[36m@@ -30,14 +31,24 @@[m [mfunction authenticate_(idToken) {[m
+   if (response.getResponseCode() !== 200) throw new Error('Invalid or expired Google ID token.');[m
+   const identity = JSON.parse(response.getContentText());[m
+   if (identity.aud !== getRequiredProperty_('GOOGLE_CLIENT_ID') || identity.email_verified !== 'true') throw new Error('Google identity verification failed.');[m
+[32m+[m
+   const user = findUserByEmail_(identity.email);[m
+   if (!user || String(user.active).toUpperCase() !== 'TRUE') throw new Error('This Google account is not authorized.');[m
+[31m-  return { email: String(user.email).toLowerCase(), name: user.name, role: user.role };[m
+[32m+[m
+[32m+[m[32m  const normalizedRole = String(user.role || ROLES.MEMBER).toLowerCase();[m
+[32m+[m[32m  const normalizedPerson = String(user.person || user.name || '').trim();[m
+[32m+[m
+[32m+[m[32m  return {[m
+[32m+[m[32m    email: String(user.email).toLowerCase(),[m
+[32m+[m[32m    name: String(user.name || identity.name || '').trim(),[m
+[32m+[m[32m    role: normalizedRole,[m
+[32m+[m[32m    person: normalizedPerson in PERSONS ? normalizedPerson : (normalizedRole === ROLES.ADMIN ? '' : normalizedPerson),[m
+[32m+[m[32m  };[m
+ }[m
+ [m
+ function listTransactions_(user, filters) {[m
+   let rows = getRows_(SHEET_NAMES.TRANSACTIONS);[m
+[31m-  if (user.role !== ROLES.ADMIN) rows = rows.filter(function (row) { return row.person === user.name; });[m
+[32m+[m[32m  if (user.role !== ROLES.ADMIN) rows = rows.filter(function (row) { return row.person === user.person; });[m
+   if (filters.person) rows = rows.filter(function (row) { return row.person === filters.person; });[m
+   if (filters.dateFrom) rows = rows.filter(function (row) { return row.date >= filters.dateFrom; });[m
+   if (filters.dateTo) rows = rows.filter(function (row) { return row.date <= filters.dateTo; });[m
+[36m@@ -46,10 +57,24 @@[m [mfunction listTransactions_(user, filters) {[m
+ [m
+ function createTransaction_(user, transaction) {[m
+   validateTransaction_(transaction);[m
+[31m-  if (transaction.type === TRANSACTION_TYPES.WITHDRAWAL && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create withdrawals.');[m
+[31m-  if (user.role !== ROLES.ADMIN && transaction.person !== user.name) throw new Error('Members can only create deposits for themselves.');[m
+[32m+[m[32m  if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create money-given transactions.');[m
+[32m+[m[32m  if (user.role !== ROLES.ADMIN && transaction.person !== user.person) throw new Error('Members can only create deposits for their own person record.');[m
+[32m+[m
+   const now = new Date().toISOString();[m
+[31m-  const record = { id: Utilities.getUuid(), person: transaction.person, type: transaction.type, amount: Number(transaction.amount), date: transaction.date, mode: transaction.mode, note: transaction.note || '', createdBy: user.email, createdAt: now, updatedBy: user.email, updatedAt: now };[m
+[32m+[m[32m  const record = {[m
+[32m+[m[32m    id: Utilities.getUuid(),[m
+[32m+[m[32m    person: transaction.person,[m
+[32m+[m[32m    type: transaction.type,[m
+[32m+[m[32m    amount: Number(transaction.amount),[m
+[32m+[m[32m    date: transaction.date,[m
+[32m+[m[32m    mode: transaction.mode,[m
+[32m+[m[32m    note: String(transaction.note || '').trim(),[m
+[32m+[m[32m    createdBy: user.email,[m
+[32m+[m[32m    createdAt: now,[m
+[32m+[m[32m    updatedBy: user.email,[m
+[32m+[m[32m    updatedAt: now,[m
+[32m+[m[32m  };[m
+[32m+[m
+   appendRow_(SHEET_NAMES.TRANSACTIONS, record);[m
+   audit_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);[m
+   return record;[m
+[36m@@ -76,7 +101,8 @@[m [mfunction deleteTransaction_(user, id) {[m
+ [m
+ function validateTransaction_(transaction) {[m
+   if (!transaction || !transaction.person || !transaction.date || !transaction.mode || !Object.values(TRANSACTION_TYPES).includes(transaction.type) || !Number.isFinite(Number(transaction.amount)) || Number(transaction.amount) <= 0) throw new Error('Invalid transaction data.');[m
+[31m-  if (transaction.type === TRANSACTION_TYPES.WITHDRAWAL && !String(transaction.note || '').trim()) throw new Error('A withdrawal note is required.');[m
+[32m+[m[32m  if (!Object.values(PERSONS).includes(String(transaction.person))) throw new Error('Unsupported ledger person.');[m
+[32m+[m[32m  if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && !String(transaction.note || '').trim()) throw new Error('A money-given note is required.');[m
+ }[m
+ function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw new Error('Administrator access is required.'); }[m
+ function findUserByEmail_(email) { return getRows_(SHEET_NAMES.USERS).find(function (row) { return String(row.email).toLowerCase() === String(email).toLowerCase(); }); }[m
+[1mdiff --git a/apps-script/README.md b/apps-script/README.md[m
+[1mindex 742f22e..6e0b211 100644[m
+[1m--- a/apps-script/README.md[m
+[1m+++ b/apps-script/README.md[m
+[36m@@ -1,14 +1,21 @@[m
+[31m-# Pocket Ledger Apps Script deployment[m
+[32m+[m[32m# BalanceSheetApp Apps Script deployment[m
+ [m
+[31m-Paste `Code.gs` into the Apps Script project linked to the Pocket Ledger spreadsheet.[m
+[32m+[m[32mPaste `Code.gs` into the Apps Script project linked to the BalanceSheetApp spreadsheet.[m
+ [m
+ In **Project Settings → Script properties**, add:[m
+ [m
+ | Property | Value |[m
+ | --- | --- |[m
+[31m-| `SHEET_ID` | `17gCjznp1B2crUTbjK_c3R7M_0LLoeBXlYfrTexpqRAA` |[m
+[32m+[m[32m| `SHEET_ID` | The spreadsheet ID for the shared ledger workbook |[m
+ | `GOOGLE_CLIENT_ID` | The same OAuth web client ID used in the frontend `.env` |[m
+ [m
+ Deploy using **Deploy → New deployment → Web app**. Set **Execute as** to **Me** and **Who has access** to **Anyone**. The API verifies Google ID tokens and then permits only active users in the `Users` sheet, so public web-app access does not by itself grant ledger access.[m
+ [m
+[32m+[m[32mThe ledger backend is now aligned to the app's real transaction model:[m
+[32m+[m
+[32m+[m[32m- `DEPOSIT`[m
+[32m+[m[32m- `MONEY_GIVEN`[m
+[32m+[m[32m- `Sagar` and `Tejas` person records[m
+[32m+[m[32m- Admin-only money-given writes, while member accounts can only create deposits for their own person record[m
+[32m+[m
+ Copy the deployed URL into the frontend `.env` as `VITE_API_BASE_URL`.[m

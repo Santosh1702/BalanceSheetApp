@@ -1,7 +1,8 @@
-/** Pocket Ledger Google Apps Script API. Configure SCRIPT_PROPERTY SHEET_ID before deployment. */
+/** BalanceSheetApp Google Apps Script API. Configure SCRIPT_PROPERTY SHEET_ID before deployment. */
 const SHEET_NAMES = Object.freeze({ TRANSACTIONS: 'Transactions', USERS: 'Users', SETTINGS: 'Settings', AUDIT: 'AuditLog' });
-const TRANSACTION_TYPES = Object.freeze({ DEPOSIT: 'DEPOSIT', WITHDRAWAL: 'WITHDRAWAL' });
+const TRANSACTION_TYPES = Object.freeze({ DEPOSIT: 'DEPOSIT', MONEY_GIVEN: 'MONEY_GIVEN' });
 const ROLES = Object.freeze({ ADMIN: 'admin', MEMBER: 'member' });
+const PERSONS = Object.freeze({ SAGAR: 'Sagar', TEJAS: 'Tejas' });
 
 function doGet(event) { return handleRequest_(event.parameter || {}); }
 function doPost(event) { return handleRequest_(JSON.parse(event.postData && event.postData.contents || '{}')); }
@@ -30,14 +31,24 @@ function authenticate_(idToken) {
   if (response.getResponseCode() !== 200) throw new Error('Invalid or expired Google ID token.');
   const identity = JSON.parse(response.getContentText());
   if (identity.aud !== getRequiredProperty_('GOOGLE_CLIENT_ID') || identity.email_verified !== 'true') throw new Error('Google identity verification failed.');
+
   const user = findUserByEmail_(identity.email);
   if (!user || String(user.active).toUpperCase() !== 'TRUE') throw new Error('This Google account is not authorized.');
-  return { email: String(user.email).toLowerCase(), name: user.name, role: user.role };
+
+  const normalizedRole = String(user.role || ROLES.MEMBER).toLowerCase();
+  const normalizedPerson = String(user.person || user.name || '').trim();
+
+  return {
+    email: String(user.email).toLowerCase(),
+    name: String(user.name || identity.name || '').trim(),
+    role: normalizedRole,
+    person: normalizedPerson in PERSONS ? normalizedPerson : (normalizedRole === ROLES.ADMIN ? '' : normalizedPerson),
+  };
 }
 
 function listTransactions_(user, filters) {
   let rows = getRows_(SHEET_NAMES.TRANSACTIONS);
-  if (user.role !== ROLES.ADMIN) rows = rows.filter(function (row) { return row.person === user.name; });
+  if (user.role !== ROLES.ADMIN) rows = rows.filter(function (row) { return row.person === user.person; });
   if (filters.person) rows = rows.filter(function (row) { return row.person === filters.person; });
   if (filters.dateFrom) rows = rows.filter(function (row) { return row.date >= filters.dateFrom; });
   if (filters.dateTo) rows = rows.filter(function (row) { return row.date <= filters.dateTo; });
@@ -46,10 +57,24 @@ function listTransactions_(user, filters) {
 
 function createTransaction_(user, transaction) {
   validateTransaction_(transaction);
-  if (transaction.type === TRANSACTION_TYPES.WITHDRAWAL && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create withdrawals.');
-  if (user.role !== ROLES.ADMIN && transaction.person !== user.name) throw new Error('Members can only create deposits for themselves.');
+  if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create money-given transactions.');
+  if (user.role !== ROLES.ADMIN && transaction.person !== user.person) throw new Error('Members can only create deposits for their own person record.');
+
   const now = new Date().toISOString();
-  const record = { id: Utilities.getUuid(), person: transaction.person, type: transaction.type, amount: Number(transaction.amount), date: transaction.date, mode: transaction.mode, note: transaction.note || '', createdBy: user.email, createdAt: now, updatedBy: user.email, updatedAt: now };
+  const record = {
+    id: Utilities.getUuid(),
+    person: transaction.person,
+    type: transaction.type,
+    amount: Number(transaction.amount),
+    date: transaction.date,
+    mode: transaction.mode,
+    note: String(transaction.note || '').trim(),
+    createdBy: user.email,
+    createdAt: now,
+    updatedBy: user.email,
+    updatedAt: now,
+  };
+
   appendRow_(SHEET_NAMES.TRANSACTIONS, record);
   audit_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);
   return record;
@@ -76,7 +101,8 @@ function deleteTransaction_(user, id) {
 
 function validateTransaction_(transaction) {
   if (!transaction || !transaction.person || !transaction.date || !transaction.mode || !Object.values(TRANSACTION_TYPES).includes(transaction.type) || !Number.isFinite(Number(transaction.amount)) || Number(transaction.amount) <= 0) throw new Error('Invalid transaction data.');
-  if (transaction.type === TRANSACTION_TYPES.WITHDRAWAL && !String(transaction.note || '').trim()) throw new Error('A withdrawal note is required.');
+  if (!Object.values(PERSONS).includes(String(transaction.person))) throw new Error('Unsupported ledger person.');
+  if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && !String(transaction.note || '').trim()) throw new Error('A money-given note is required.');
 }
 function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw new Error('Administrator access is required.'); }
 function findUserByEmail_(email) { return getRows_(SHEET_NAMES.USERS).find(function (row) { return String(row.email).toLowerCase() === String(email).toLowerCase(); }); }
