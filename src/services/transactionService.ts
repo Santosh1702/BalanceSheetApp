@@ -1,0 +1,5 @@
+import { apiClient, assertApiConfigured } from './apiClient'
+import type { Transaction, TransactionInput } from '../types/transaction'
+interface ApiResponse<T> { readonly ok: boolean; readonly data?: T; readonly error?: string }
+async function request<T>(idToken: string, action: string, payload: Record<string, unknown> = {}) { assertApiConfigured(); const response = await apiClient.post<ApiResponse<T>>('', { idToken, action, ...payload }); if (!response.data.ok || !response.data.data) throw new Error(response.data.error || 'The API request failed.'); return response.data.data }
+export const transactionService = { list: (idToken: string) => request<Transaction[]>(idToken, 'transactions.list'), create: (idToken: string, transaction: TransactionInput) => request<Transaction>(idToken, 'transactions.create', { transaction }), update: (idToken: string, id: string, transaction: TransactionInput) => request<Transaction>(idToken, 'transactions.update', { id, transaction }), remove: (idToken: string, id: string) => request<{ id: string }>(idToken, 'transactions.delete', { id }) }
