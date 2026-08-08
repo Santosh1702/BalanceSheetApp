@@ -22,9 +22,35 @@ async function request<T>(idToken: string, action: string, payload: Record<strin
   return response.data.data
 }
 
+function normalizeBusinessDate(value: string | null | undefined) {
+  if (!value) return ''
+
+  const raw = String(value).trim()
+  if (!raw) return ''
+
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match ? match[1] : raw
+}
+
+function normalizeTransaction(transaction: Transaction): Transaction {
+  return {
+    ...transaction,
+    date: normalizeBusinessDate(transaction.date),
+  }
+}
+
 export const transactionService = {
-  list: (idToken: string) => request<Transaction[]>(idToken, 'transactions.list'),
-  create: (idToken: string, transaction: TransactionInput) => request<Transaction>(idToken, 'transactions.create', { transaction }),
-  update: (idToken: string, id: string, transaction: TransactionInput) => request<Transaction>(idToken, 'transactions.update', { id, transaction }),
+  list: async (idToken: string) => {
+    const transactions = await request<Transaction[]>(idToken, 'transactions.list')
+    return transactions.map(normalizeTransaction)
+  },
+  create: async (idToken: string, transaction: TransactionInput) => {
+    const created = await request<Transaction>(idToken, 'transactions.create', { transaction })
+    return normalizeTransaction(created)
+  },
+  update: async (idToken: string, id: string, transaction: TransactionInput) => {
+    const updated = await request<Transaction>(idToken, 'transactions.update', { id, transaction })
+    return normalizeTransaction(updated)
+  },
   remove: (idToken: string, id: string) => request<{ id: string }>(idToken, 'transactions.delete', { id }),
 }
