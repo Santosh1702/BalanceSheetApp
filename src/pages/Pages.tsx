@@ -156,6 +156,14 @@ export function DashboardPage() {
   )
 }
 
+function normalizeBusinessDate(value: string | null | undefined) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (!raw) return ''
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match ? match[1] : raw
+}
+
 export function CalendarPage() {
   const { idToken, user } = useAuth()
   const query = useQuery({
@@ -178,9 +186,20 @@ export function CalendarPage() {
     return data.filter((transaction: Transaction) => transaction.person === person)
   }, [person, query.data])
 
+  const groupedTransactions = useMemo(() => {
+    return visibleTransactions.reduce<Record<string, Transaction[]>>((accumulator, transaction) => {
+      const key = normalizeBusinessDate(transaction.date)
+      if (!key) return accumulator
+      if (!accumulator[key]) accumulator[key] = []
+      accumulator[key].push(transaction)
+      return accumulator
+    }, {})
+  }, [visibleTransactions])
+
   const startOffset = month.startOf('month').day()
   const dayCells = Array.from({ length: 42 }, (_, index) => month.date(index - startOffset + 1))
-  const selectedItems = visibleTransactions.filter((transaction: Transaction) => transaction.date === selectedDate)
+  const normalizedSelectedDate = normalizeBusinessDate(selectedDate)
+  const selectedItems = groupedTransactions[normalizedSelectedDate] ?? []
 
   return (
     <PlaceholderPage description="Review transactions in a monthly calendar and inspect the details for a selected date." title="Calendar">
@@ -212,7 +231,7 @@ export function CalendarPage() {
               {dayCells.map((date) => {
                 const isCurrentMonth = date.month() === month.month()
                 const isoDate = date.format('YYYY-MM-DD')
-                const dailyTransactions = visibleTransactions.filter((transaction: Transaction) => transaction.date === isoDate)
+                const dailyTransactions = groupedTransactions[isoDate] ?? []
                 const active = isoDate === selectedDate
                 const dailyAmount = dailyTransactions.reduce((sum, transaction) => sum + transaction.amount, 0)
                 return (
@@ -234,9 +253,9 @@ export function CalendarPage() {
                     {dailyTransactions.length > 0 && (
                       <Chip
                         color="success"
-                        label={`${dailyTransactions.length} · ${currency.format(dailyAmount)}`}
+                        label={currency.format(dailyAmount)}
                         size="small"
-                        sx={{ mt: 0.5 }}
+                        sx={{ mt: 0.5, maxWidth: '100%' }}
                       />
                     )}
                   </Button>
