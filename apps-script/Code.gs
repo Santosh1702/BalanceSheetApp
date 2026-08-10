@@ -125,7 +125,21 @@ function findRowById_(sheetName, id) { const rows = getRows_(sheetName); const i
 function audit_(performedBy, entityType, entityId, action, previousValue, newValue) { appendRow_(SHEET_NAMES.AUDIT, { id: Utilities.getUuid(), entityType: entityType, entityId: entityId, action: action, previousValue: previousValue ? JSON.stringify(previousValue) : '', newValue: newValue ? JSON.stringify(newValue) : '', performedBy: performedBy, timestamp: new Date().toISOString() }); }
 function getSpreadsheet_() { return SpreadsheetApp.openById(getRequiredProperty_('SHEET_ID')); }
 function getSheet_(name) { const sheet = getSpreadsheet_().getSheetByName(name); if (!sheet) throw new Error('Missing required sheet: ' + name); return sheet; }
-function getRows_(name) { const sheet = getSheet_(name); const values = sheet.getDataRange().getValues(); if (values.length < 2) return []; const headers = values[0].map(String); return values.slice(1).filter(function (row) { return row.some(function (value) { return value !== ''; }); }).map(function (row) { return headers.reduce(function (record, header, index) { record[header] = row[index] instanceof Date ? Utilities.formatDate(row[index], 'Etc/UTC', "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'") : row[index]; return record; }, {}); }); }
+function normalizeSheetValue_(sheetName, header, value, spreadsheetTimeZone) {
+  if (!(value instanceof Date)) return value;
+  if (sheetName === SHEET_NAMES.TRANSACTIONS && header === 'date') {
+    return Utilities.formatDate(value, spreadsheetTimeZone, 'yyyy-MM-dd');
+  }
+  return Utilities.formatDate(value, 'Etc/UTC', "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+}
+function getRows_(name) {
+  const sheet = getSheet_(name);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const headers = values[0].map(String);
+  const spreadsheetTimeZone = sheet.getParent().getSpreadsheetTimeZone();
+  return values.slice(1).filter(function (row) { return row.some(function (value) { return value !== ''; }); }).map(function (row) { return headers.reduce(function (record, header, index) { record[header] = normalizeSheetValue_(name, header, row[index], spreadsheetTimeZone); return record; }, {}); });
+}
 function appendRow_(name, record) { const sheet = getSheet_(name); const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]; sheet.appendRow(headers.map(function (header) { return record[header] === undefined ? '' : record[header]; })); }
 function updateRow_(name, rowNumber, record) { const sheet = getSheet_(name); const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]; sheet.getRange(rowNumber, 1, 1, headers.length).setValues([headers.map(function (header) { return record[header] === undefined ? '' : record[header]; })]); }
 function getRequiredProperty_(key) { const value = PropertiesService.getScriptProperties().getProperty(key); if (!value) throw new Error('Missing Apps Script property: ' + key); return value; }
