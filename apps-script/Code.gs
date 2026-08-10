@@ -60,49 +60,64 @@ function createTransaction_(user, transaction) {
   if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create money-given transactions.');
   if (user.role !== ROLES.ADMIN && transaction.person !== user.person) throw new Error('Members can only create deposits for their own person record.');
 
-  const now = new Date().toISOString();
-  const record = {
-    id: Utilities.getUuid(),
-    person: transaction.person,
-    type: transaction.type,
-    amount: Number(transaction.amount),
-    date: transaction.date,
-    mode: transaction.mode,
-    note: String(transaction.note || '').trim(),
-    createdBy: user.email,
-    createdAt: now,
-    updatedBy: user.email,
-    updatedAt: now,
-  };
+  return withScriptLock_(function () {
+    const now = new Date().toISOString();
+    const record = {
+      id: Utilities.getUuid(),
+      person: transaction.person,
+      type: transaction.type,
+      amount: Number(transaction.amount),
+      date: transaction.date,
+      mode: transaction.mode,
+      note: String(transaction.note || '').trim(),
+      createdBy: user.email,
+      createdAt: now,
+      updatedBy: user.email,
+      updatedAt: now,
+    };
 
-  appendRow_(SHEET_NAMES.TRANSACTIONS, record);
-  audit_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);
-  return record;
+    appendRow_(SHEET_NAMES.TRANSACTIONS, record);
+    audit_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);
+    return record;
+  });
 }
 
 function updateTransaction_(user, id, transaction) {
   requireAdmin_(user); validateTransaction_(transaction);
-  const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, id);
-  if (!existing) throw new Error('Transaction not found.');
-  const record = Object.assign({}, existing.row, transaction, { id: id, amount: Number(transaction.amount), updatedBy: user.email, updatedAt: new Date().toISOString() });
-  updateRow_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber, record);
-  audit_(user.email, 'TRANSACTION', id, 'UPDATE', existing.row, record);
-  return record;
+  return withScriptLock_(function () {
+    const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, id);
+    if (!existing) throw new Error('Transaction not found.');
+    const record = Object.assign({}, existing.row, transaction, { id: id, amount: Number(transaction.amount), updatedBy: user.email, updatedAt: new Date().toISOString() });
+    updateRow_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber, record);
+    audit_(user.email, 'TRANSACTION', id, 'UPDATE', existing.row, record);
+    return record;
+  });
 }
 
 function deleteTransaction_(user, id) {
   requireAdmin_(user);
-  const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, id);
-  if (!existing) throw new Error('Transaction not found.');
-  getSheet_(SHEET_NAMES.TRANSACTIONS).deleteRow(existing.rowNumber);
-  audit_(user.email, 'TRANSACTION', id, 'DELETE', existing.row, null);
-  return { id: id };
+  return withScriptLock_(function () {
+    const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, id);
+    if (!existing) throw new Error('Transaction not found.');
+    getSheet_(SHEET_NAMES.TRANSACTIONS).deleteRow(existing.rowNumber);
+    audit_(user.email, 'TRANSACTION', id, 'DELETE', existing.row, null);
+    return { id: id };
+  });
 }
 
 function validateTransaction_(transaction) {
   if (!transaction || !transaction.person || !transaction.date || !transaction.mode || !Object.values(TRANSACTION_TYPES).includes(transaction.type) || !Number.isFinite(Number(transaction.amount)) || Number(transaction.amount) <= 0) throw new Error('Invalid transaction data.');
   if (!Object.values(PERSONS).includes(String(transaction.person))) throw new Error('Unsupported ledger person.');
   if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && !String(transaction.note || '').trim()) throw new Error('A money-given note is required.');
+}
+function withScriptLock_(operation) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('The service is busy processing another transaction. Please try again.');
+  try {
+    return operation();
+  } finally {
+    lock.releaseLock();
+  }
 }
 function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw new Error('Administrator access is required.'); }
 function findUserByEmail_(email) { return getRows_(SHEET_NAMES.USERS).find(function (row) { return String(row.email).toLowerCase() === String(email).toLowerCase(); }); }
