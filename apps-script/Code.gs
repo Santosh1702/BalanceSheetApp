@@ -12,6 +12,7 @@ function handleRequest_(request) {
     const user = authenticate_(request.idToken);
     let result;
     switch (request.action) {
+      case 'auth.me': result = authenticatedProfile_(user); break;
       case 'transactions.list': result = listTransactions_(user, request.filters || {}); break;
       case 'transactions.create': result = createTransaction_(user, request.transaction); break;
       case 'transactions.update': result = updateTransaction_(user, request.id, request.transaction); break;
@@ -35,15 +36,22 @@ function authenticate_(idToken) {
   const user = findUserByEmail_(identity.email);
   if (!user || String(user.active).toUpperCase() !== 'TRUE') throw new Error('This Google account is not authorized.');
 
-  const normalizedRole = String(user.role || ROLES.MEMBER).toLowerCase();
-  const normalizedPerson = String(user.person || user.name || '').trim();
+  const normalizedRole = String(user.role || '').trim();
+  const normalizedPerson = String(user.person || '').trim();
+  if (!Object.values(ROLES).includes(normalizedRole)) throw new Error('Invalid Users sheet role. Expected admin or member.');
+  if (normalizedRole === ROLES.MEMBER && !Object.values(PERSONS).includes(normalizedPerson)) throw new Error('Invalid Users sheet person. Members require a supported person.');
+  if (normalizedRole === ROLES.ADMIN && normalizedPerson && !Object.values(PERSONS).includes(normalizedPerson)) throw new Error('Invalid Users sheet person. Administrators require an empty or supported person.');
 
   return {
     email: String(user.email).toLowerCase(),
     name: String(user.name || identity.name || '').trim(),
     role: normalizedRole,
-    person: normalizedPerson in PERSONS ? normalizedPerson : (normalizedRole === ROLES.ADMIN ? '' : normalizedPerson),
+    person: normalizedPerson,
   };
+}
+
+function authenticatedProfile_(user) {
+  return { email: user.email, name: user.name, role: user.role, person: user.person };
 }
 
 function listTransactions_(user, filters) {
