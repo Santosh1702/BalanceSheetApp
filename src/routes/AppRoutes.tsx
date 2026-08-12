@@ -1,8 +1,12 @@
 import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '../auth/ProtectedRoute'
 import { AppLayout } from '../layout/AppLayout'
+import { CalendarPage } from '../pages/calendar/CalendarPage'
+import { DashboardPage } from '../pages/dashboard/DashboardPage'
 import { LoginPage } from '../pages/login/LoginPage'
-import { CalendarPage, DashboardPage, ReportsPage, SettingsPage, TransactionsPage } from '../pages/Pages'
+import { ReportsPage } from '../pages/reports/ReportsPage'
+import { SettingsPage } from '../pages/settings/SettingsPage'
+import { TransactionsPage } from '../pages/transactions/TransactionsPage'
 import { UserRole } from '../types/auth'
 
 export function AppRoutes() {
