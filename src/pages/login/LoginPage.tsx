@@ -8,25 +8,31 @@ import { useAuth } from '../../hooks/useAuth'
 import './LoginPage.css'
 
 export function LoginPage() {
-  const { isAuthenticated, sessionExpired, signInWithCredential } = useAuth()
+  const { isAuthenticated, isInitializing, sessionExpired, signInWithCredential } = useAuth()
   const [error, setError] = useState<string>()
+  const [isSigningIn, setIsSigningIn] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
+  if (isInitializing) return null
   if (isAuthenticated) return <Navigate replace to="/" />
 
-  const login = ({ credential }: { credential?: string }) => {
+  const login = async ({ credential }: { credential?: string }) => {
+    if (isSigningIn) return
     setError(undefined)
     if (!credential) {
       setError('Google did not return a sign-in credential.')
       return
     }
 
+    setIsSigningIn(true)
     try {
-      signInWithCredential(credential)
+      await signInWithCredential(credential)
       navigate((location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/', { replace: true })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to sign in.')
+    } finally {
+      setIsSigningIn(false)
     }
   }
 
@@ -42,7 +48,7 @@ export function LoginPage() {
           <Typography color="text.secondary">Sign in with your approved Google account to access the family ledger.</Typography>
         </div>
         {sessionExpired && <Alert severity="info">Your Google sign-in session expired. Please sign in again to continue.</Alert>}
-        {authConfig.isValid ? <GoogleLogin onError={() => setError('Google sign-in could not be completed.')} onSuccess={login} /> : <Alert severity="warning">Authentication configuration is invalid: {authConfig.errors.join(' ')}</Alert>}
+        {authConfig.isValid ? <GoogleLogin containerProps={{ 'aria-busy': isSigningIn, style: { pointerEvents: isSigningIn ? 'none' : 'auto' } }} onError={() => setError('Google sign-in could not be completed.')} onSuccess={login} /> : <Alert severity="warning">Authentication configuration is invalid: {authConfig.errors.join(' ')}</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
       </Paper>
     </main>
