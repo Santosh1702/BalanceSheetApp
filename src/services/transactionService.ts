@@ -44,8 +44,8 @@ export const transactionService = {
     const transactions = await request<Transaction[]>(idToken, 'transactions.list')
     return transactions.map(normalizeTransaction)
   },
-  create: async (idToken: string, transaction: TransactionInput) => {
-    const created = await request<Transaction>(idToken, 'transactions.create', { transaction })
+  create: async (idToken: string, requestId: string, transaction: TransactionInput) => {
+    const created = await request<Transaction>(idToken, 'transactions.create', { requestId, transaction })
     return normalizeTransaction(created)
   },
   update: async (idToken: string, id: string, transaction: TransactionInput) => {
