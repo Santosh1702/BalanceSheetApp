@@ -5,6 +5,7 @@ const PAYMENT_MODES = Object.freeze({ ONLINE_TRANSFER: 'ONLINE_TRANSFER', CASH: 
 const ROLES = Object.freeze({ ADMIN: 'admin', MEMBER: 'member' });
 const PERSONS = Object.freeze({ SAGAR: 'Sagar', TEJAS: 'Tejas' });
 const MAX_NOTE_LENGTH = 500;
+const ERROR_CODES = Object.freeze({ INVALID_REQUEST: 'INVALID_REQUEST', AUTHENTICATION: 'AUTHENTICATION_ERROR', AUTHORIZATION: 'AUTHORIZATION_ERROR', VALIDATION: 'VALIDATION_ERROR', NOT_FOUND: 'NOT_FOUND', CONFLICT: 'CONFLICT', SERVICE_BUSY: 'SERVICE_BUSY', CONFIGURATION: 'CONFIGURATION_ERROR', INTERNAL: 'INTERNAL_ERROR' });
 const REQUIRED_HEADERS = Object.freeze({
   Transactions: Object.freeze(['id', 'person', 'type', 'amount', 'date', 'mode', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt']),
   Users: Object.freeze(['email', 'name', 'role', 'person', 'active']),
@@ -17,15 +18,15 @@ function doPost(event) {
   try {
     request = JSON.parse(event.postData && event.postData.contents || '{}');
   } catch (error) {
-    return json_({ ok: false, error: 'Invalid JSON request body.' });
+    return errorJson_(apiError_(ERROR_CODES.INVALID_REQUEST, 'Invalid JSON request body.'));
   }
   return handleRequest_(request);
 }
 
 function handleRequest_(request) {
   try {
-    if (!isPlainObject_(request)) throw new Error('Request body must be a JSON object.');
-    if (typeof request.action !== 'string' || !request.action.trim()) throw new Error('Request action is required.');
+    if (!isPlainObject_(request)) throw apiError_(ERROR_CODES.INVALID_REQUEST, 'Request body must be a JSON object.');
+    if (typeof request.action !== 'string' || !request.action.trim()) throw apiError_(ERROR_CODES.INVALID_REQUEST, 'Request action is required.');
     const user = authenticate_(request.idToken);
     let result;
     switch (request.action.trim()) {
@@ -35,29 +36,34 @@ function handleRequest_(request) {
       case 'transactions.update': result = updateTransaction_(user, request.id, request.transaction); break;
       case 'transactions.delete': result = deleteTransaction_(user, request.id); break;
       case 'health': result = { status: 'ok' }; break;
-      default: throw new Error('Unsupported API action.');
+      default: throw apiError_(ERROR_CODES.INVALID_REQUEST, 'Unsupported API action.');
     }
     return json_({ ok: true, data: result });
   } catch (error) {
-    return json_({ ok: false, error: error.message || 'An unexpected error occurred.' });
+    return errorJson_(error);
   }
 }
 
 function authenticate_(idToken) {
-  if (!idToken) throw new Error('Missing Google ID token.');
+  if (!idToken) throw apiError_(ERROR_CODES.AUTHENTICATION, 'Missing Google ID token.');
   const response = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken), { muteHttpExceptions: true });
-  if (response.getResponseCode() !== 200) throw new Error('Invalid or expired Google ID token.');
-  const identity = JSON.parse(response.getContentText());
-  if (identity.aud !== getRequiredProperty_('GOOGLE_CLIENT_ID') || identity.email_verified !== 'true') throw new Error('Google identity verification failed.');
+  if (response.getResponseCode() !== 200) throw apiError_(ERROR_CODES.AUTHENTICATION, 'Invalid or expired Google ID token.');
+  let identity;
+  try {
+    identity = JSON.parse(response.getContentText());
+  } catch (error) {
+    throw apiError_(ERROR_CODES.AUTHENTICATION, 'Google identity verification failed.');
+  }
+  if (identity.aud !== getRequiredProperty_('GOOGLE_CLIENT_ID') || identity.email_verified !== 'true') throw apiError_(ERROR_CODES.AUTHENTICATION, 'Google identity verification failed.');
 
   const user = findUserByEmail_(identity.email);
-  if (!user || String(user.active).toUpperCase() !== 'TRUE') throw new Error('This Google account is not authorized.');
+  if (!user || String(user.active).toUpperCase() !== 'TRUE') throw apiError_(ERROR_CODES.AUTHORIZATION, 'This Google account is not authorized.');
 
   const normalizedRole = String(user.role || '').trim();
   const normalizedPerson = String(user.person || '').trim();
-  if (!Object.values(ROLES).includes(normalizedRole)) throw new Error('Invalid Users sheet role. Expected admin or member.');
-  if (normalizedRole === ROLES.MEMBER && !Object.values(PERSONS).includes(normalizedPerson)) throw new Error('Invalid Users sheet person. Members require a supported person.');
-  if (normalizedRole === ROLES.ADMIN && normalizedPerson && !Object.values(PERSONS).includes(normalizedPerson)) throw new Error('Invalid Users sheet person. Administrators require an empty or supported person.');
+  if (!Object.values(ROLES).includes(normalizedRole)) throw apiError_(ERROR_CODES.CONFIGURATION, 'Invalid Users sheet role. Expected admin or member.');
+  if (normalizedRole === ROLES.MEMBER && !Object.values(PERSONS).includes(normalizedPerson)) throw apiError_(ERROR_CODES.CONFIGURATION, 'Invalid Users sheet person. Members require a supported person.');
+  if (normalizedRole === ROLES.ADMIN && normalizedPerson && !Object.values(PERSONS).includes(normalizedPerson)) throw apiError_(ERROR_CODES.CONFIGURATION, 'Invalid Users sheet person. Administrators require an empty or supported person.');
 
   return {
     email: String(user.email).toLowerCase(),
@@ -84,8 +90,8 @@ function listTransactions_(user, filters) {
 function createTransaction_(user, requestId, transaction) {
   const normalizedRequestId = validateCreateRequestId_(requestId);
   const input = validateTransaction_(transaction);
-  if (input.type === TRANSACTION_TYPES.MONEY_GIVEN && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create money-given transactions.');
-  if (user.role !== ROLES.ADMIN && input.person !== user.person) throw new Error('Members can only create deposits for their own person record.');
+  if (input.type === TRANSACTION_TYPES.MONEY_GIVEN && user.role !== ROLES.ADMIN) throw apiError_(ERROR_CODES.AUTHORIZATION, 'Only administrators can create money-given transactions.');
+  if (user.role !== ROLES.ADMIN && input.person !== user.person) throw apiError_(ERROR_CODES.AUTHORIZATION, 'Members can only create deposits for their own person record.');
 
   return withScriptLock_(function () {
     const replay = findCreateReplay_(normalizedRequestId);
@@ -121,7 +127,7 @@ function updateTransaction_(user, id, transaction) {
   const input = validateTransaction_(transaction);
   return withScriptLock_(function () {
     const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, normalizedId);
-    if (!existing) throw new Error('Transaction not found.');
+    if (!existing) throw apiError_(ERROR_CODES.NOT_FOUND, 'Transaction not found.');
     const record = {
       id: existing.row.id,
       person: input.person,
@@ -149,7 +155,7 @@ function deleteTransaction_(user, id) {
   const normalizedId = validateTransactionId_(id);
   return withScriptLock_(function () {
     const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, normalizedId);
-    if (!existing) throw new Error('Transaction not found.');
+    if (!existing) throw apiError_(ERROR_CODES.NOT_FOUND, 'Transaction not found.');
     const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'DELETE', '', existing.row, null);
     atomicTransactionAuditBatch_([
       deleteRowRequest_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber),
@@ -160,37 +166,37 @@ function deleteTransaction_(user, id) {
 }
 
 function validateTransaction_(transaction) {
-  if (!isPlainObject_(transaction)) throw new Error('Transaction must be a JSON object.');
+  if (!isPlainObject_(transaction)) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction must be a JSON object.');
   const allowedFields = ['person', 'type', 'amount', 'date', 'mode', 'note'];
   const unexpectedFields = Object.keys(transaction).filter(function (key) { return !allowedFields.includes(key); });
-  if (unexpectedFields.length) throw new Error('Unsupported transaction fields: ' + unexpectedFields.join(', ') + '.');
-  if (typeof transaction.person !== 'string' || !Object.values(PERSONS).includes(transaction.person)) throw new Error('Unsupported ledger person.');
-  if (typeof transaction.type !== 'string' || !Object.values(TRANSACTION_TYPES).includes(transaction.type)) throw new Error('Unsupported transaction type.');
-  if (typeof transaction.amount !== 'number' || !Number.isFinite(transaction.amount) || transaction.amount <= 0) throw new Error('Transaction amount must be a finite number greater than zero.');
-  if (!isBusinessDate_(transaction.date)) throw new Error('Transaction date must be a real calendar date in YYYY-MM-DD format.');
-  if (typeof transaction.mode !== 'string' || !Object.values(PAYMENT_MODES).includes(transaction.mode)) throw new Error('Unsupported payment mode.');
-  if (transaction.note !== undefined && typeof transaction.note !== 'string') throw new Error('Transaction note must be a string.');
+  if (unexpectedFields.length) throw apiError_(ERROR_CODES.VALIDATION, 'Unsupported transaction fields: ' + unexpectedFields.join(', ') + '.');
+  if (typeof transaction.person !== 'string' || !Object.values(PERSONS).includes(transaction.person)) throw apiError_(ERROR_CODES.VALIDATION, 'Unsupported ledger person.');
+  if (typeof transaction.type !== 'string' || !Object.values(TRANSACTION_TYPES).includes(transaction.type)) throw apiError_(ERROR_CODES.VALIDATION, 'Unsupported transaction type.');
+  if (typeof transaction.amount !== 'number' || !Number.isFinite(transaction.amount) || transaction.amount <= 0) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction amount must be a finite number greater than zero.');
+  if (!isBusinessDate_(transaction.date)) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction date must be a real calendar date in YYYY-MM-DD format.');
+  if (typeof transaction.mode !== 'string' || !Object.values(PAYMENT_MODES).includes(transaction.mode)) throw apiError_(ERROR_CODES.VALIDATION, 'Unsupported payment mode.');
+  if (transaction.note !== undefined && typeof transaction.note !== 'string') throw apiError_(ERROR_CODES.VALIDATION, 'Transaction note must be a string.');
   const note = (transaction.note || '').trim();
-  if (note.length > MAX_NOTE_LENGTH) throw new Error('Transaction note must be ' + MAX_NOTE_LENGTH + ' characters or fewer.');
-  if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && !note) throw new Error('A money-given note is required.');
+  if (note.length > MAX_NOTE_LENGTH) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction note must be ' + MAX_NOTE_LENGTH + ' characters or fewer.');
+  if (transaction.type === TRANSACTION_TYPES.MONEY_GIVEN && !note) throw apiError_(ERROR_CODES.VALIDATION, 'A money-given note is required.');
   return { person: transaction.person, type: transaction.type, amount: transaction.amount, date: transaction.date, mode: transaction.mode, note: note };
 }
 function validateTransactionFilters_(filters) {
-  if (!isPlainObject_(filters)) throw new Error('Transaction filters must be a JSON object.');
+  if (!isPlainObject_(filters)) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction filters must be a JSON object.');
   const allowedFields = ['person', 'dateFrom', 'dateTo'];
   const unexpectedFields = Object.keys(filters).filter(function (key) { return !allowedFields.includes(key); });
-  if (unexpectedFields.length) throw new Error('Unsupported transaction filter fields: ' + unexpectedFields.join(', ') + '.');
-  if (filters.person !== undefined && (typeof filters.person !== 'string' || !Object.values(PERSONS).includes(filters.person))) throw new Error('Unsupported transaction filter person.');
-  if (filters.dateFrom !== undefined && !isBusinessDate_(filters.dateFrom)) throw new Error('Transaction dateFrom filter must be a real calendar date in YYYY-MM-DD format.');
-  if (filters.dateTo !== undefined && !isBusinessDate_(filters.dateTo)) throw new Error('Transaction dateTo filter must be a real calendar date in YYYY-MM-DD format.');
+  if (unexpectedFields.length) throw apiError_(ERROR_CODES.VALIDATION, 'Unsupported transaction filter fields: ' + unexpectedFields.join(', ') + '.');
+  if (filters.person !== undefined && (typeof filters.person !== 'string' || !Object.values(PERSONS).includes(filters.person))) throw apiError_(ERROR_CODES.VALIDATION, 'Unsupported transaction filter person.');
+  if (filters.dateFrom !== undefined && !isBusinessDate_(filters.dateFrom)) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction dateFrom filter must be a real calendar date in YYYY-MM-DD format.');
+  if (filters.dateTo !== undefined && !isBusinessDate_(filters.dateTo)) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction dateTo filter must be a real calendar date in YYYY-MM-DD format.');
   return { person: filters.person, dateFrom: filters.dateFrom, dateTo: filters.dateTo };
 }
 function validateTransactionId_(id) {
-  if (typeof id !== 'string' || !id.trim()) throw new Error('Transaction id is required.');
+  if (typeof id !== 'string' || !id.trim()) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction id is required.');
   return id.trim();
 }
 function validateCreateRequestId_(requestId) {
-  if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId.trim())) throw new Error('Create requestId must be a canonical UUID.');
+  if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId.trim())) throw apiError_(ERROR_CODES.VALIDATION, 'Create requestId must be a canonical UUID.');
   return requestId.trim().toLowerCase();
 }
 function isBusinessDate_(value) {
@@ -205,45 +211,45 @@ function isPlainObject_(value) { return value !== null && typeof value === 'obje
 function transactionResponse_(record) { return { id: record.id, person: record.person, type: record.type, amount: record.amount, date: record.date, mode: record.mode, note: record.note, createdBy: record.createdBy, createdAt: record.createdAt, updatedBy: record.updatedBy, updatedAt: record.updatedAt }; }
 function withScriptLock_(operation) {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) throw new Error('The service is busy processing another transaction. Please try again.');
+  if (!lock.tryLock(10000)) throw apiError_(ERROR_CODES.SERVICE_BUSY, 'The service is busy processing another transaction. Please try again.');
   try {
     return operation();
   } finally {
     lock.releaseLock();
   }
 }
-function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw new Error('Administrator access is required.'); }
+function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw apiError_(ERROR_CODES.AUTHORIZATION, 'Administrator access is required.'); }
 function findUserByEmail_(email) { return getRows_(SHEET_NAMES.USERS).find(function (row) { return String(row.email).toLowerCase() === String(email).toLowerCase(); }); }
-function findRowById_(sheetName, id) { const matches = getRowEntries_(sheetName).filter(function (entry) { return String(entry.row.id) === id; }); if (matches.length > 1) throw new Error('Duplicate transaction id detected.'); return matches.length ? matches[0] : null; }
+function findRowById_(sheetName, id) { const matches = getRowEntries_(sheetName).filter(function (entry) { return String(entry.row.id) === id; }); if (matches.length > 1) throw apiError_(ERROR_CODES.CONFLICT, 'Duplicate transaction id detected.'); return matches.length ? matches[0] : null; }
 function findCreateReplay_(requestId) {
   const matches = getRows_(SHEET_NAMES.AUDIT).filter(function (row) { return String(row.requestId || '').trim().toLowerCase() === requestId; });
-  if (matches.length > 1) throw new Error('The create request ID has already been used for a different operation.');
+  if (matches.length > 1) throw apiError_(ERROR_CODES.CONFLICT, 'The create request ID has already been used for a different operation.');
   return matches.length ? matches[0] : null;
 }
 function replayCreateTransaction_(auditRow, user, input) {
   const conflict = 'The create request ID has already been used for a different operation.';
-  if (auditRow.entityType !== 'TRANSACTION' || auditRow.action !== 'CREATE' || String(auditRow.performedBy).toLowerCase() !== user.email) throw new Error(conflict);
+  if (auditRow.entityType !== 'TRANSACTION' || auditRow.action !== 'CREATE' || String(auditRow.performedBy).toLowerCase() !== user.email) throw apiError_(ERROR_CODES.CONFLICT, conflict);
   let original;
   try {
     original = JSON.parse(auditRow.newValue);
   } catch (error) {
-    throw new Error(conflict);
+    throw apiError_(ERROR_CODES.CONFLICT, conflict);
   }
-  if (!isPlainObject_(original) || typeof original.id !== 'string' || !original.id.trim() || String(auditRow.entityId) !== original.id || typeof original.createdBy !== 'string' || original.createdBy.toLowerCase() !== user.email || typeof original.createdAt !== 'string' || typeof original.updatedBy !== 'string' || original.updatedBy.toLowerCase() !== user.email || typeof original.updatedAt !== 'string') throw new Error(conflict);
+  if (!isPlainObject_(original) || typeof original.id !== 'string' || !original.id.trim() || String(auditRow.entityId) !== original.id || typeof original.createdBy !== 'string' || original.createdBy.toLowerCase() !== user.email || typeof original.createdAt !== 'string' || typeof original.updatedBy !== 'string' || original.updatedBy.toLowerCase() !== user.email || typeof original.updatedAt !== 'string') throw apiError_(ERROR_CODES.CONFLICT, conflict);
   let originalInput;
   try {
     originalInput = validateTransaction_({ person: original.person, type: original.type, amount: original.amount, date: original.date, mode: original.mode, note: original.note });
   } catch (error) {
-    throw new Error(conflict);
+    throw apiError_(ERROR_CODES.CONFLICT, conflict);
   }
   const fields = ['person', 'type', 'amount', 'date', 'mode', 'note'];
-  if (fields.some(function (field) { return originalInput[field] !== input[field]; })) throw new Error(conflict);
+  if (fields.some(function (field) { return originalInput[field] !== input[field]; })) throw apiError_(ERROR_CODES.CONFLICT, conflict);
   return transactionResponse_({ id: original.id, person: originalInput.person, type: originalInput.type, amount: originalInput.amount, date: originalInput.date, mode: originalInput.mode, note: originalInput.note, createdBy: original.createdBy, createdAt: original.createdAt, updatedBy: original.updatedBy, updatedAt: original.updatedAt });
 }
 function auditRecord_(performedBy, entityType, entityId, action, requestId, previousValue, newValue) { return { id: Utilities.getUuid(), entityType: entityType, entityId: entityId, action: action, requestId: requestId || '', previousValue: previousValue ? JSON.stringify(previousValue) : '', newValue: newValue ? JSON.stringify(newValue) : '', performedBy: performedBy, timestamp: new Date().toISOString() }; }
 function audit_(performedBy, entityType, entityId, action, previousValue, newValue) { appendRow_(SHEET_NAMES.AUDIT, auditRecord_(performedBy, entityType, entityId, action, '', previousValue, newValue)); }
 function getSpreadsheet_() { return SpreadsheetApp.openById(getRequiredProperty_('SHEET_ID')); }
-function getSheet_(name) { const sheet = getSpreadsheet_().getSheetByName(name); if (!sheet) throw new Error('Missing required sheet: ' + name); return sheet; }
+function getSheet_(name) { const sheet = getSpreadsheet_().getSheetByName(name); if (!sheet) throw apiError_(ERROR_CODES.CONFIGURATION, 'Missing required sheet: ' + name); return sheet; }
 function normalizeSheetValue_(sheetName, header, value, spreadsheetTimeZone) {
   if (!(value instanceof Date)) return value;
   if (sheetName === SHEET_NAMES.TRANSACTIONS && header === 'date') {
@@ -262,7 +268,7 @@ function getRowEntries_(name) {
   const spreadsheetTimeZone = sheet.getParent().getSpreadsheetTimeZone();
   return values.slice(1).map(function (row, index) { return { values: row, rowNumber: index + 2 }; }).filter(function (entry) { return entry.values.some(function (value) { return value !== ''; }); }).map(function (entry) { return { row: headers.reduce(function (record, header, index) { record[header] = normalizeSheetValue_(name, header, entry.values[index], spreadsheetTimeZone); return record; }, {}), rowNumber: entry.rowNumber }; });
 }
-function validateHeaders_(name, headers) { const duplicates = headers.filter(function (header, index) { return headers.indexOf(header) !== index; }); if (duplicates.length) throw new Error('Duplicate headers in ' + name + ' sheet: ' + Array.from(new Set(duplicates)).join(', ') + '.'); const required = REQUIRED_HEADERS[name]; if (!required) return; const missing = required.filter(function (header) { return !headers.includes(header); }); if (missing.length) throw new Error('Missing required headers in ' + name + ' sheet: ' + missing.join(', ') + '.'); }
+function validateHeaders_(name, headers) { const duplicates = headers.filter(function (header, index) { return headers.indexOf(header) !== index; }); if (duplicates.length) throw apiError_(ERROR_CODES.CONFIGURATION, 'Duplicate headers in ' + name + ' sheet: ' + Array.from(new Set(duplicates)).join(', ') + '.'); const required = REQUIRED_HEADERS[name]; if (!required) return; const missing = required.filter(function (header) { return !headers.includes(header); }); if (missing.length) throw apiError_(ERROR_CODES.CONFIGURATION, 'Missing required headers in ' + name + ' sheet: ' + missing.join(', ') + '.'); }
 function normalizeHeader_(value) { return String(value).replace(/^\uFEFF/, '').trim(); }
 function headersFromValues_(name, values) { const headerRow = Array.isArray(values) && Array.isArray(values[0]) ? values[0] : []; const headers = headerRow.map(normalizeHeader_); validateHeaders_(name, headers); return headers; }
 function getValidatedHeaders_(sheet, name) { const lastColumn = sheet.getLastColumn(); const values = lastColumn > 0 ? sheet.getRange(1, 1, 1, lastColumn).getValues() : []; return headersFromValues_(name, values); }
@@ -289,5 +295,8 @@ function deleteRowRequest_(name, rowNumber) {
 function atomicTransactionAuditBatch_(requests) { Sheets.Spreadsheets.batchUpdate({ requests: requests }, getRequiredProperty_('SHEET_ID')); }
 function appendRow_(name, record) { const sheet = getSheet_(name); const headers = getValidatedHeaders_(sheet, name); sheet.appendRow(headers.map(function (header) { return record[header] === undefined ? '' : record[header]; })); }
 function updateRow_(name, rowNumber, record) { const sheet = getSheet_(name); const headers = getValidatedHeaders_(sheet, name); sheet.getRange(rowNumber, 1, 1, headers.length).setValues([headers.map(function (header) { return record[header] === undefined ? '' : record[header]; })]); }
-function getRequiredProperty_(key) { const value = PropertiesService.getScriptProperties().getProperty(key); if (!value) throw new Error('Missing Apps Script property: ' + key); return value; }
+function getRequiredProperty_(key) { const value = PropertiesService.getScriptProperties().getProperty(key); if (!value) throw apiError_(ERROR_CODES.CONFIGURATION, 'Missing Apps Script property: ' + key); return value; }
+function apiError_(code, message) { const error = new Error(message); error.name = 'ApiError'; error.code = code; return error; }
+function isApiError_(error) { return error && error.name === 'ApiError' && Object.values(ERROR_CODES).includes(error.code); }
+function errorJson_(error) { return isApiError_(error) ? json_({ ok: false, error: { code: error.code, message: error.message } }) : json_({ ok: false, error: { code: ERROR_CODES.INTERNAL, message: 'An unexpected error occurred.' } }); }
 function json_(body) { return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON); }

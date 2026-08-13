@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { apiClient, assertApiConfigured } from './apiClient'
+import { apiClient, apiErrorMessage, assertApiConfigured } from './apiClient'
+import type { ApiResponse } from './apiClient'
 import { UserRole } from '../types/auth'
 
 const authProfileSchema = z.object({
@@ -19,12 +20,6 @@ const authProfileSchema = z.object({
 
 export type AuthProfile = z.infer<typeof authProfileSchema>
 
-interface ApiResponse<T> {
-  readonly ok: boolean
-  readonly data?: T
-  readonly error?: string
-}
-
 export const authService = {
   me: async (idToken: string): Promise<AuthProfile> => {
     assertApiConfigured()
@@ -34,7 +29,7 @@ export const authService = {
     })
 
     if (!response.data.ok || !response.data.data) {
-      throw new Error(response.data.error || 'Unable to authenticate this Google account.')
+      throw new Error(apiErrorMessage(response.data, 'Unable to authenticate this Google account.'))
     }
 
     return authProfileSchema.parse(response.data.data)

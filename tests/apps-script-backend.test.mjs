@@ -6,6 +6,7 @@ import vm from 'node:vm'
 const code = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8')
 const transactionHeaders = ['id', 'person', 'type', 'amount', 'date', 'mode', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt']
 const auditHeaders = ['id', 'entityType', 'entityId', 'action', 'requestId', 'previousValue', 'newValue', 'performedBy', 'timestamp']
+const userHeaders = ['email', 'name', 'role', 'person', 'active']
 const requestId = '123e4567-e89b-42d3-a456-426614174000'
 const conflict = 'The create request ID has already been used for a different operation.'
 const user = { email: 'admin@example.com', name: 'Admin', role: 'admin', person: '' }
@@ -38,12 +39,13 @@ function auditRow(overrides = {}) {
   }
 }
 
-function createHarness({ auditRows = [] } = {}) {
+function createHarness({ auditRows = [], transactionRows = [], users = [{ email: user.email, name: user.name, role: user.role, person: user.person, active: true }], headers = {}, properties = { SHEET_ID: 'spreadsheet-1', GOOGLE_CLIENT_ID: 'client-1' }, lockAvailable = true, batchError = null, tokenInfoBody = JSON.stringify({ aud: 'client-1', email_verified: 'true', email: user.email, name: user.name }), fetchError = null } = {}) {
   const batches = []
   let uuidIndex = 0
   const sheetData = {
-    Transactions: { id: 101, headers: transactionHeaders, rows: [] },
-    AuditLog: { id: 202, headers: auditHeaders, rows: auditRows },
+    Transactions: { id: 101, headers: headers.Transactions || transactionHeaders, rows: transactionRows },
+    AuditLog: { id: 202, headers: headers.AuditLog || auditHeaders, rows: auditRows },
+    Users: { id: 303, headers: headers.Users || userHeaders, rows: users },
   }
   const spreadsheet = {
     getSheetByName(name) {
@@ -61,13 +63,18 @@ function createHarness({ auditRows = [] } = {}) {
   const context = vm.createContext({
     console,
     SpreadsheetApp: { openById: () => spreadsheet },
-    Sheets: { Spreadsheets: { batchUpdate: (body, spreadsheetId) => batches.push({ body, spreadsheetId }) } },
+    Sheets: { Spreadsheets: { batchUpdate: (body, spreadsheetId) => { if (batchError) throw batchError; batches.push({ body, spreadsheetId }) } } },
     Utilities: {
       getUuid: () => ['transaction-new', 'audit-new'][uuidIndex++] ?? `uuid-${uuidIndex}`,
       formatDate: () => { throw new Error('Unexpected date formatting') },
     },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key === 'SHEET_ID' ? 'spreadsheet-1' : 'unused' }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => lockAvailable, releaseLock: () => {} }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || null }) },
+    UrlFetchApp: { fetch: () => { if (fetchError) throw fetchError; return { getResponseCode: () => 200, getContentText: () => tokenInfoBody } } },
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput: (content) => ({ content, setMimeType() { return this } }),
+    },
   })
   vm.runInContext(code, context)
   return {
@@ -77,6 +84,10 @@ function createHarness({ auditRows = [] } = {}) {
       return vm.runInContext(`${name}(...__args)`, context)
     },
   }
+}
+
+function responseBody(output) {
+  return JSON.parse(output.content)
 }
 
 function plain(value) {
@@ -191,4 +202,105 @@ test('update and delete request builders use correct zero-based row indexes', ()
   assert.deepEqual(update.updateCells.start, { sheetId: 101, rowIndex: 6, columnIndex: 0 })
   const deletion = plain(harness.call('deleteRowRequest_', 'Transactions', 7))
   assert.deepEqual(deletion.deleteDimension.range, { sheetId: 101, dimension: 'ROWS', startIndex: 6, endIndex: 7 })
+})
+
+test('malformed JSON returns INVALID_REQUEST', () => {
+  const harness = createHarness()
+  const response = responseBody(harness.call('doPost', { postData: { contents: '{bad json' } }))
+  assert.deepEqual(response, { ok: false, error: { code: 'INVALID_REQUEST', message: 'Invalid JSON request body.' } })
+})
+
+test('unsupported action returns INVALID_REQUEST', () => {
+  const harness = createHarness()
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'unsupported' }))
+  assert.equal(response.error.code, 'INVALID_REQUEST')
+})
+
+test('missing token returns AUTHENTICATION_ERROR', () => {
+  const harness = createHarness()
+  const response = responseBody(harness.call('handleRequest_', { action: 'auth.me' }))
+  assert.equal(response.error.code, 'AUTHENTICATION_ERROR')
+})
+
+test('malformed tokeninfo JSON returns AUTHENTICATION_ERROR', () => {
+  const harness = createHarness({ tokenInfoBody: '{bad json' })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'auth.me' }))
+  assert.deepEqual(response, { ok: false, error: { code: 'AUTHENTICATION_ERROR', message: 'Google identity verification failed.' } })
+})
+
+test('tokeninfo fetch failures return generic INTERNAL_ERROR without exposing raw messages', () => {
+  const harness = createHarness({ fetchError: new Error('private tokeninfo infrastructure failure') })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'auth.me' }))
+  assert.deepEqual(response, { ok: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } })
+  assert.equal(JSON.stringify(response).includes('private tokeninfo infrastructure failure'), false)
+})
+
+test('invalid transaction returns VALIDATION_ERROR', () => {
+  const harness = createHarness()
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.create', requestId, transaction: { ...input, amount: 0 } }))
+  assert.equal(response.error.code, 'VALIDATION_ERROR')
+})
+
+test('unauthorized transaction operation returns AUTHORIZATION_ERROR', () => {
+  const member = { email: user.email, name: 'Member', role: 'member', person: 'Sagar', active: true }
+  const harness = createHarness({ users: [member] })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.create', requestId, transaction: { ...input, type: 'MONEY_GIVEN' } }))
+  assert.equal(response.error.code, 'AUTHORIZATION_ERROR')
+})
+
+test('missing transaction returns NOT_FOUND', () => {
+  const harness = createHarness()
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.update', id: 'missing', transaction: input }))
+  assert.equal(response.error.code, 'NOT_FOUND')
+})
+
+test('requestId replay mismatch returns CONFLICT', () => {
+  const harness = createHarness({ auditRows: [auditRow()] })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.create', requestId, transaction: { ...input, amount: 1001 } }))
+  assert.equal(response.error.code, 'CONFLICT')
+})
+
+test('duplicate transaction IDs return CONFLICT', () => {
+  const duplicate = { ...original, id: 'duplicate' }
+  const harness = createHarness({ transactionRows: [duplicate, duplicate] })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.update', id: 'duplicate', transaction: input }))
+  assert.equal(response.error.code, 'CONFLICT')
+})
+
+test('lock acquisition failure returns SERVICE_BUSY', () => {
+  const harness = createHarness({ lockAvailable: false })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.create', requestId, transaction: input }))
+  assert.equal(response.error.code, 'SERVICE_BUSY')
+})
+
+test('missing script property returns CONFIGURATION_ERROR', () => {
+  const harness = createHarness({ properties: { SHEET_ID: 'spreadsheet-1' } })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'auth.me' }))
+  assert.equal(response.error.code, 'CONFIGURATION_ERROR')
+})
+
+test('missing and duplicate required headers return CONFIGURATION_ERROR', async (t) => {
+  await t.test('missing header', () => {
+    const harness = createHarness({ headers: { Transactions: transactionHeaders.filter((header) => header !== 'id') } })
+    const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.list', filters: {} }))
+    assert.equal(response.error.code, 'CONFIGURATION_ERROR')
+  })
+  await t.test('duplicate header', () => {
+    const harness = createHarness({ headers: { Transactions: [...transactionHeaders, 'id'] } })
+    const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.list', filters: {} }))
+    assert.equal(response.error.code, 'CONFIGURATION_ERROR')
+  })
+})
+
+test('unexpected errors return generic INTERNAL_ERROR without exposing raw messages', () => {
+  const harness = createHarness({ batchError: new Error('private backend failure') })
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.create', requestId, transaction: input }))
+  assert.deepEqual(response, { ok: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } })
+  assert.equal(JSON.stringify(response).includes('private backend failure'), false)
+})
+
+test('successful response shape remains unchanged', () => {
+  const harness = createHarness()
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'auth.me' }))
+  assert.deepEqual(response, { ok: true, data: { email: user.email, name: user.name, role: user.role, person: user.person } })
 })
