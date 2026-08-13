@@ -9,6 +9,19 @@ export const apiClient = axios.create({
   },
 })
 
+export interface ApiResponse<T> {
+  readonly ok: boolean
+  readonly data?: T
+  readonly error?: {
+    readonly code: string
+    readonly message: string
+  }
+}
+
+export function apiErrorMessage<T>(response: ApiResponse<T>, fallback: string) {
+  return response.error?.message || fallback
+}
+
 export function assertApiConfigured() {
   if (!apiBaseUrl) {
     throw new Error('The Apps Script API URL is missing. Add VITE_API_BASE_URL to .env.local.')
