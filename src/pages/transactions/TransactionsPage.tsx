@@ -18,7 +18,7 @@ import {
 } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../hooks/useAuth'
@@ -41,6 +41,10 @@ function formatTransactionType(type: TransactionType) {
   return type === TransactionType.Deposit ? 'Deposit' : 'Payment'
 }
 
+function createInputKey(input: TransactionInput) {
+  return JSON.stringify({ person: input.person, type: input.type, amount: input.amount, date: input.date, mode: input.mode, note: input.note })
+}
+
 const defaultValues: TransactionInput = {
   person: Person.Sagar,
   type: TransactionType.Deposit,
@@ -57,6 +61,7 @@ export function TransactionsPage() {
   const [open, setOpen] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const createRequest = useRef<{ id: string; inputKey: string } | null>(null)
 
   const query = useQuery({
     queryKey: ['transactions'],
@@ -65,12 +70,17 @@ export function TransactionsPage() {
   })
 
   const invalidate = () => client.invalidateQueries({ queryKey: ['transactions'] })
+  const clearCreateRequest = useCallback(() => { createRequest.current = null }, [])
 
   const save = useMutation({
-    mutationFn: (data: TransactionInput) => editing
-      ? transactionService.update(idToken!, editing.id, data)
-      : transactionService.create(idToken!, data),
+    mutationFn: (data: TransactionInput) => {
+      if (editing) return transactionService.update(idToken!, editing.id, data)
+      const inputKey = createInputKey(data)
+      if (!createRequest.current || createRequest.current.inputKey !== inputKey) createRequest.current = { id: crypto.randomUUID(), inputKey }
+      return transactionService.create(idToken!, createRequest.current.id, data)
+    },
     onSuccess: () => {
+      clearCreateRequest()
       setOpen(false)
       setEditing(null)
       invalidate()
@@ -101,6 +111,7 @@ export function TransactionsPage() {
   })
 
   const startCreate = () => {
+    clearCreateRequest()
     setEditing(null)
     setOpen(true)
   }
@@ -167,7 +178,10 @@ export function TransactionsPage() {
       <TransactionDialog
         editing={editing}
         isAdmin={isAdmin}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          clearCreateRequest()
+          setOpen(false)
+        }}
         onSave={(data) => save.mutate(data as TransactionInput)}
         open={open}
         saving={save.isPending}

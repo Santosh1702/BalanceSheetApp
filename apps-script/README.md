@@ -13,6 +13,8 @@ Deploy using **Deploy → New deployment → Web app**. Set **Execute as** to **
 
 Before deployment, enable the **Google Sheets API v4** Advanced Google service in the Apps Script project. Transaction mutations use `Sheets.Spreadsheets.batchUpdate()` to write the transaction and its audit entry atomically.
 
+The `AuditLog` sheet requires a `requestId` header. Existing audit rows may leave this cell blank; new transaction creates store their client-generated request ID there for replay-safe idempotency. Deploy this change in order: add the `requestId` header to `AuditLog`, deploy the backend, then deploy the frontend.
+
 The ledger backend is now aligned to the app's real transaction model:
 
 - `DEPOSIT`

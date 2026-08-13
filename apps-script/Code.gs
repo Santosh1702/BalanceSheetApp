@@ -8,7 +8,7 @@ const MAX_NOTE_LENGTH = 500;
 const REQUIRED_HEADERS = Object.freeze({
   Transactions: Object.freeze(['id', 'person', 'type', 'amount', 'date', 'mode', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt']),
   Users: Object.freeze(['email', 'name', 'role', 'person', 'active']),
-  AuditLog: Object.freeze(['id', 'entityType', 'entityId', 'action', 'previousValue', 'newValue', 'performedBy', 'timestamp']),
+  AuditLog: Object.freeze(['id', 'entityType', 'entityId', 'action', 'requestId', 'previousValue', 'newValue', 'performedBy', 'timestamp']),
 });
 
 function doGet(event) { return handleRequest_(event.parameter || {}); }
@@ -31,7 +31,7 @@ function handleRequest_(request) {
     switch (request.action.trim()) {
       case 'auth.me': result = authenticatedProfile_(user); break;
       case 'transactions.list': result = listTransactions_(user, request.filters === undefined ? {} : request.filters); break;
-      case 'transactions.create': result = createTransaction_(user, request.transaction); break;
+      case 'transactions.create': result = createTransaction_(user, request.requestId, request.transaction); break;
       case 'transactions.update': result = updateTransaction_(user, request.id, request.transaction); break;
       case 'transactions.delete': result = deleteTransaction_(user, request.id); break;
       case 'health': result = { status: 'ok' }; break;
@@ -81,12 +81,16 @@ function listTransactions_(user, filters) {
   return rows.sort(function (left, right) { return String(right.date).localeCompare(String(left.date)); }).map(transactionResponse_);
 }
 
-function createTransaction_(user, transaction) {
+function createTransaction_(user, requestId, transaction) {
+  const normalizedRequestId = validateCreateRequestId_(requestId);
   const input = validateTransaction_(transaction);
   if (input.type === TRANSACTION_TYPES.MONEY_GIVEN && user.role !== ROLES.ADMIN) throw new Error('Only administrators can create money-given transactions.');
   if (user.role !== ROLES.ADMIN && input.person !== user.person) throw new Error('Members can only create deposits for their own person record.');
 
   return withScriptLock_(function () {
+    const replay = findCreateReplay_(normalizedRequestId);
+    if (replay) return replayCreateTransaction_(replay, user, input);
+
     const now = new Date().toISOString();
     const record = {
       id: Utilities.getUuid(),
@@ -102,7 +106,7 @@ function createTransaction_(user, transaction) {
       updatedAt: now,
     };
 
-    const auditRecord = auditRecord_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);
+    const auditRecord = auditRecord_(user.email, 'TRANSACTION', record.id, 'CREATE', normalizedRequestId, null, record);
     atomicTransactionAuditBatch_([
       appendCellsRequest_(SHEET_NAMES.TRANSACTIONS, record),
       appendCellsRequest_(SHEET_NAMES.AUDIT, auditRecord),
@@ -131,7 +135,7 @@ function updateTransaction_(user, id, transaction) {
       updatedBy: user.email,
       updatedAt: new Date().toISOString(),
     };
-    const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'UPDATE', existing.row, record);
+    const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'UPDATE', '', existing.row, record);
     atomicTransactionAuditBatch_([
       updateCellsRequest_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber, record),
       appendCellsRequest_(SHEET_NAMES.AUDIT, auditRecord),
@@ -146,7 +150,7 @@ function deleteTransaction_(user, id) {
   return withScriptLock_(function () {
     const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, normalizedId);
     if (!existing) throw new Error('Transaction not found.');
-    const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'DELETE', existing.row, null);
+    const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'DELETE', '', existing.row, null);
     atomicTransactionAuditBatch_([
       deleteRowRequest_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber),
       appendCellsRequest_(SHEET_NAMES.AUDIT, auditRecord),
@@ -185,6 +189,10 @@ function validateTransactionId_(id) {
   if (typeof id !== 'string' || !id.trim()) throw new Error('Transaction id is required.');
   return id.trim();
 }
+function validateCreateRequestId_(requestId) {
+  if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId.trim())) throw new Error('Create requestId must be a canonical UUID.');
+  return requestId.trim().toLowerCase();
+}
 function isBusinessDate_(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parts = value.split('-').map(Number);
@@ -207,8 +215,33 @@ function withScriptLock_(operation) {
 function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw new Error('Administrator access is required.'); }
 function findUserByEmail_(email) { return getRows_(SHEET_NAMES.USERS).find(function (row) { return String(row.email).toLowerCase() === String(email).toLowerCase(); }); }
 function findRowById_(sheetName, id) { const matches = getRowEntries_(sheetName).filter(function (entry) { return String(entry.row.id) === id; }); if (matches.length > 1) throw new Error('Duplicate transaction id detected.'); return matches.length ? matches[0] : null; }
-function auditRecord_(performedBy, entityType, entityId, action, previousValue, newValue) { return { id: Utilities.getUuid(), entityType: entityType, entityId: entityId, action: action, previousValue: previousValue ? JSON.stringify(previousValue) : '', newValue: newValue ? JSON.stringify(newValue) : '', performedBy: performedBy, timestamp: new Date().toISOString() }; }
-function audit_(performedBy, entityType, entityId, action, previousValue, newValue) { appendRow_(SHEET_NAMES.AUDIT, auditRecord_(performedBy, entityType, entityId, action, previousValue, newValue)); }
+function findCreateReplay_(requestId) {
+  const matches = getRows_(SHEET_NAMES.AUDIT).filter(function (row) { return String(row.requestId || '').trim().toLowerCase() === requestId; });
+  if (matches.length > 1) throw new Error('The create request ID has already been used for a different operation.');
+  return matches.length ? matches[0] : null;
+}
+function replayCreateTransaction_(auditRow, user, input) {
+  const conflict = 'The create request ID has already been used for a different operation.';
+  if (auditRow.entityType !== 'TRANSACTION' || auditRow.action !== 'CREATE' || String(auditRow.performedBy).toLowerCase() !== user.email) throw new Error(conflict);
+  let original;
+  try {
+    original = JSON.parse(auditRow.newValue);
+  } catch (error) {
+    throw new Error(conflict);
+  }
+  if (!isPlainObject_(original) || typeof original.id !== 'string' || !original.id.trim() || String(auditRow.entityId) !== original.id || typeof original.createdBy !== 'string' || original.createdBy.toLowerCase() !== user.email || typeof original.createdAt !== 'string' || typeof original.updatedBy !== 'string' || original.updatedBy.toLowerCase() !== user.email || typeof original.updatedAt !== 'string') throw new Error(conflict);
+  let originalInput;
+  try {
+    originalInput = validateTransaction_({ person: original.person, type: original.type, amount: original.amount, date: original.date, mode: original.mode, note: original.note });
+  } catch (error) {
+    throw new Error(conflict);
+  }
+  const fields = ['person', 'type', 'amount', 'date', 'mode', 'note'];
+  if (fields.some(function (field) { return originalInput[field] !== input[field]; })) throw new Error(conflict);
+  return transactionResponse_({ id: original.id, person: originalInput.person, type: originalInput.type, amount: originalInput.amount, date: originalInput.date, mode: originalInput.mode, note: originalInput.note, createdBy: original.createdBy, createdAt: original.createdAt, updatedBy: original.updatedBy, updatedAt: original.updatedAt });
+}
+function auditRecord_(performedBy, entityType, entityId, action, requestId, previousValue, newValue) { return { id: Utilities.getUuid(), entityType: entityType, entityId: entityId, action: action, requestId: requestId || '', previousValue: previousValue ? JSON.stringify(previousValue) : '', newValue: newValue ? JSON.stringify(newValue) : '', performedBy: performedBy, timestamp: new Date().toISOString() }; }
+function audit_(performedBy, entityType, entityId, action, previousValue, newValue) { appendRow_(SHEET_NAMES.AUDIT, auditRecord_(performedBy, entityType, entityId, action, '', previousValue, newValue)); }
 function getSpreadsheet_() { return SpreadsheetApp.openById(getRequiredProperty_('SHEET_ID')); }
 function getSheet_(name) { const sheet = getSpreadsheet_().getSheetByName(name); if (!sheet) throw new Error('Missing required sheet: ' + name); return sheet; }
 function normalizeSheetValue_(sheetName, header, value, spreadsheetTimeZone) {
