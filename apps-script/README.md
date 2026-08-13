@@ -11,6 +11,8 @@ In **Project Settings → Script properties**, add:
 
 Deploy using **Deploy → New deployment → Web app**. Set **Execute as** to **Me** and **Who has access** to **Anyone**. The API verifies Google ID tokens and then permits only active users in the `Users` sheet, so public web-app access does not by itself grant ledger access.
 
+Before deployment, enable the **Google Sheets API v4** Advanced Google service in the Apps Script project. Transaction mutations use `Sheets.Spreadsheets.batchUpdate()` to write the transaction and its audit entry atomically.
+
 The ledger backend is now aligned to the app's real transaction model:
 
 - `DEPOSIT`

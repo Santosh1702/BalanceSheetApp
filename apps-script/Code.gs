@@ -102,8 +102,11 @@ function createTransaction_(user, transaction) {
       updatedAt: now,
     };
 
-    appendRow_(SHEET_NAMES.TRANSACTIONS, record);
-    audit_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);
+    const auditRecord = auditRecord_(user.email, 'TRANSACTION', record.id, 'CREATE', null, record);
+    atomicTransactionAuditBatch_([
+      appendCellsRequest_(SHEET_NAMES.TRANSACTIONS, record),
+      appendCellsRequest_(SHEET_NAMES.AUDIT, auditRecord),
+    ]);
     return transactionResponse_(record);
   });
 }
@@ -128,8 +131,11 @@ function updateTransaction_(user, id, transaction) {
       updatedBy: user.email,
       updatedAt: new Date().toISOString(),
     };
-    updateRow_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber, record);
-    audit_(user.email, 'TRANSACTION', normalizedId, 'UPDATE', existing.row, record);
+    const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'UPDATE', existing.row, record);
+    atomicTransactionAuditBatch_([
+      updateCellsRequest_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber, record),
+      appendCellsRequest_(SHEET_NAMES.AUDIT, auditRecord),
+    ]);
     return transactionResponse_(record);
   });
 }
@@ -140,8 +146,11 @@ function deleteTransaction_(user, id) {
   return withScriptLock_(function () {
     const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, normalizedId);
     if (!existing) throw new Error('Transaction not found.');
-    getSheet_(SHEET_NAMES.TRANSACTIONS).deleteRow(existing.rowNumber);
-    audit_(user.email, 'TRANSACTION', normalizedId, 'DELETE', existing.row, null);
+    const auditRecord = auditRecord_(user.email, 'TRANSACTION', normalizedId, 'DELETE', existing.row, null);
+    atomicTransactionAuditBatch_([
+      deleteRowRequest_(SHEET_NAMES.TRANSACTIONS, existing.rowNumber),
+      appendCellsRequest_(SHEET_NAMES.AUDIT, auditRecord),
+    ]);
     return { id: normalizedId };
   });
 }
@@ -198,7 +207,8 @@ function withScriptLock_(operation) {
 function requireAdmin_(user) { if (user.role !== ROLES.ADMIN) throw new Error('Administrator access is required.'); }
 function findUserByEmail_(email) { return getRows_(SHEET_NAMES.USERS).find(function (row) { return String(row.email).toLowerCase() === String(email).toLowerCase(); }); }
 function findRowById_(sheetName, id) { const matches = getRowEntries_(sheetName).filter(function (entry) { return String(entry.row.id) === id; }); if (matches.length > 1) throw new Error('Duplicate transaction id detected.'); return matches.length ? matches[0] : null; }
-function audit_(performedBy, entityType, entityId, action, previousValue, newValue) { appendRow_(SHEET_NAMES.AUDIT, { id: Utilities.getUuid(), entityType: entityType, entityId: entityId, action: action, previousValue: previousValue ? JSON.stringify(previousValue) : '', newValue: newValue ? JSON.stringify(newValue) : '', performedBy: performedBy, timestamp: new Date().toISOString() }); }
+function auditRecord_(performedBy, entityType, entityId, action, previousValue, newValue) { return { id: Utilities.getUuid(), entityType: entityType, entityId: entityId, action: action, previousValue: previousValue ? JSON.stringify(previousValue) : '', newValue: newValue ? JSON.stringify(newValue) : '', performedBy: performedBy, timestamp: new Date().toISOString() }; }
+function audit_(performedBy, entityType, entityId, action, previousValue, newValue) { appendRow_(SHEET_NAMES.AUDIT, auditRecord_(performedBy, entityType, entityId, action, previousValue, newValue)); }
 function getSpreadsheet_() { return SpreadsheetApp.openById(getRequiredProperty_('SHEET_ID')); }
 function getSheet_(name) { const sheet = getSpreadsheet_().getSheetByName(name); if (!sheet) throw new Error('Missing required sheet: ' + name); return sheet; }
 function normalizeSheetValue_(sheetName, header, value, spreadsheetTimeZone) {
@@ -223,6 +233,27 @@ function validateHeaders_(name, headers) { const duplicates = headers.filter(fun
 function normalizeHeader_(value) { return String(value).replace(/^\uFEFF/, '').trim(); }
 function headersFromValues_(name, values) { const headerRow = Array.isArray(values) && Array.isArray(values[0]) ? values[0] : []; const headers = headerRow.map(normalizeHeader_); validateHeaders_(name, headers); return headers; }
 function getValidatedHeaders_(sheet, name) { const lastColumn = sheet.getLastColumn(); const values = lastColumn > 0 ? sheet.getRange(1, 1, 1, lastColumn).getValues() : []; return headersFromValues_(name, values); }
+function sheetsApiCell_(value) {
+  if (typeof value === 'number') return { userEnteredValue: { numberValue: value } };
+  if (typeof value === 'boolean') return { userEnteredValue: { boolValue: value } };
+  return { userEnteredValue: { stringValue: value === undefined || value === null ? '' : String(value) } };
+}
+function sheetsApiRowData_(headers, record) { return { values: headers.map(function (header) { return sheetsApiCell_(record[header]); }) }; }
+function appendCellsRequest_(name, record) {
+  const sheet = getSheet_(name);
+  const headers = getValidatedHeaders_(sheet, name);
+  return { appendCells: { sheetId: sheet.getSheetId(), rows: [sheetsApiRowData_(headers, record)], fields: 'userEnteredValue' } };
+}
+function updateCellsRequest_(name, rowNumber, record) {
+  const sheet = getSheet_(name);
+  const headers = getValidatedHeaders_(sheet, name);
+  return { updateCells: { start: { sheetId: sheet.getSheetId(), rowIndex: rowNumber - 1, columnIndex: 0 }, rows: [sheetsApiRowData_(headers, record)], fields: 'userEnteredValue' } };
+}
+function deleteRowRequest_(name, rowNumber) {
+  const sheet = getSheet_(name);
+  return { deleteDimension: { range: { sheetId: sheet.getSheetId(), dimension: 'ROWS', startIndex: rowNumber - 1, endIndex: rowNumber } } };
+}
+function atomicTransactionAuditBatch_(requests) { Sheets.Spreadsheets.batchUpdate({ requests: requests }, getRequiredProperty_('SHEET_ID')); }
 function appendRow_(name, record) { const sheet = getSheet_(name); const headers = getValidatedHeaders_(sheet, name); sheet.appendRow(headers.map(function (header) { return record[header] === undefined ? '' : record[header]; })); }
 function updateRow_(name, rowNumber, record) { const sheet = getSheet_(name); const headers = getValidatedHeaders_(sheet, name); sheet.getRange(rowNumber, 1, 1, headers.length).setValues([headers.map(function (header) { return record[header] === undefined ? '' : record[header]; })]); }
 function getRequiredProperty_(key) { const value = PropertiesService.getScriptProperties().getProperty(key); if (!value) throw new Error('Missing Apps Script property: ' + key); return value; }
