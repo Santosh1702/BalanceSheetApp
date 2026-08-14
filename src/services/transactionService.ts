@@ -1,6 +1,13 @@
 import { apiClient, apiErrorMessage, assertApiConfigured } from './apiClient'
 import type { ApiResponse } from './apiClient'
+import {
+  transactionDeleteResponseSchema,
+  transactionListResponseSchema,
+  transactionResponseSchema,
+} from '../types/transaction'
 import type { Transaction, TransactionInput } from '../types/transaction'
+
+const invalidTransactionDataMessage = 'The server returned invalid transaction data.'
 
 async function request<T>(idToken: string, action: string, payload: Record<string, unknown> = {}) {
   assertApiConfigured()
@@ -10,7 +17,7 @@ async function request<T>(idToken: string, action: string, payload: Record<strin
     ...payload,
   })
 
-  if (!response.data.ok || !response.data.data) {
+  if (!response.data.ok) {
     throw new Error(apiErrorMessage(response.data, 'The API request failed.'))
   }
 
@@ -34,18 +41,30 @@ function normalizeTransaction(transaction: Transaction): Transaction {
   }
 }
 
+function validateResponse<T>(schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false } }, value: unknown): T {
+  const result = schema.safeParse(value)
+  if (!result.success) throw new Error(invalidTransactionDataMessage)
+  return result.data
+}
+
 export const transactionService = {
   list: async (idToken: string) => {
-    const transactions = await request<Transaction[]>(idToken, 'transactions.list')
+    const data = await request<unknown>(idToken, 'transactions.list')
+    const transactions = validateResponse(transactionListResponseSchema, data)
     return transactions.map(normalizeTransaction)
   },
   create: async (idToken: string, requestId: string, transaction: TransactionInput) => {
-    const created = await request<Transaction>(idToken, 'transactions.create', { requestId, transaction })
+    const data = await request<unknown>(idToken, 'transactions.create', { requestId, transaction })
+    const created = validateResponse(transactionResponseSchema, data)
     return normalizeTransaction(created)
   },
   update: async (idToken: string, id: string, transaction: TransactionInput) => {
-    const updated = await request<Transaction>(idToken, 'transactions.update', { id, transaction })
+    const data = await request<unknown>(idToken, 'transactions.update', { id, transaction })
+    const updated = validateResponse(transactionResponseSchema, data)
     return normalizeTransaction(updated)
   },
-  remove: (idToken: string, id: string) => request<{ id: string }>(idToken, 'transactions.delete', { id }),
+  remove: async (idToken: string, id: string) => {
+    const data = await request<unknown>(idToken, 'transactions.delete', { id })
+    return validateResponse(transactionDeleteResponseSchema, data)
+  },
 }
