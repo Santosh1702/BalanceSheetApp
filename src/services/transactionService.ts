@@ -58,8 +58,8 @@ export const transactionService = {
     const created = validateResponse(transactionResponseSchema, data)
     return normalizeTransaction(created)
   },
-  update: async (idToken: string, id: string, transaction: TransactionInput) => {
-    const data = await request<unknown>(idToken, 'transactions.update', { id, transaction })
+  update: async (idToken: string, id: string, expectedUpdatedAt: string, transaction: TransactionInput) => {
+    const data = await request<unknown>(idToken, 'transactions.update', { id, expectedUpdatedAt, transaction })
     const updated = validateResponse(transactionResponseSchema, data)
     return normalizeTransaction(updated)
   },

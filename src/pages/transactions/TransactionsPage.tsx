@@ -74,7 +74,7 @@ export function TransactionsPage() {
 
   const save = useMutation({
     mutationFn: (data: TransactionInput) => {
-      if (editing) return transactionService.update(idToken!, editing.id, data)
+      if (editing) return transactionService.update(idToken!, editing.id, editing.updatedAt, data)
       const inputKey = createInputKey(data)
       if (!createRequest.current || createRequest.current.inputKey !== inputKey) createRequest.current = { id: crypto.randomUUID(), inputKey }
       return transactionService.create(idToken!, createRequest.current.id, data)
