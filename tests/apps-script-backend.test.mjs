@@ -204,6 +204,67 @@ test('update and delete request builders use correct zero-based row indexes', ()
   assert.deepEqual(deletion.deleteDimension.range, { sheetId: 101, dimension: 'ROWS', startIndex: 6, endIndex: 7 })
 })
 
+test('matching expectedUpdatedAt updates the transaction and appends its audit atomically', () => {
+  const harness = createHarness({ transactionRows: [original] })
+  const result = plain(harness.call('updateTransaction_', user, original.id, original.updatedAt, { ...input, amount: 1250 }))
+
+  assert.equal(result.amount, 1250)
+  assert.equal(result.id, original.id)
+  assert.equal(result.createdAt, original.createdAt)
+  assert.equal(harness.batches.length, 1)
+
+  const requests = plain(harness.batches[0].body.requests)
+  assert.equal(requests.length, 2)
+  assert.deepEqual(requests[0].updateCells.start, { sheetId: 101, rowIndex: 1, columnIndex: 0 })
+  assert.equal(requests[1].appendCells.sheetId, 202)
+
+  const transactionCells = requests[0].updateCells.rows[0].values
+  assert.deepEqual(transactionCells[transactionHeaders.indexOf('amount')], { userEnteredValue: { numberValue: 1250 } })
+  const auditCells = requests[1].appendCells.rows[0].values
+  assert.deepEqual(auditCells[auditHeaders.indexOf('action')], { userEnteredValue: { stringValue: 'UPDATE' } })
+  assert.deepEqual(auditCells[auditHeaders.indexOf('entityId')], { userEnteredValue: { stringValue: original.id } })
+})
+
+test('stale expectedUpdatedAt returns CONFLICT without transaction or audit writes', () => {
+  const harness = createHarness({ transactionRows: [original] })
+  const response = responseBody(harness.call('handleRequest_', {
+    idToken: 'token',
+    action: 'transactions.update',
+    id: original.id,
+    expectedUpdatedAt: '2026-08-13T09:59:59.999Z',
+    transaction: input,
+  }))
+
+  assert.deepEqual(response, { ok: false, error: { code: 'CONFLICT', message: 'The transaction was changed by another operation. Refresh and try again.' } })
+  assert.equal(harness.batches.length, 0)
+})
+
+test('missing or malformed update expectedUpdatedAt returns VALIDATION_ERROR', async (t) => {
+  const cases = {
+    missing: undefined,
+    'non-string': 123,
+    'missing milliseconds': '2026-08-13T10:00:00Z',
+    'non-UTC offset': '2026-08-13T10:00:00.000+05:30',
+    'invalid calendar date': '2026-02-30T10:00:00.000Z',
+    'invalid time': '2026-08-13T24:00:00.000Z',
+  }
+
+  for (const [name, expectedUpdatedAt] of Object.entries(cases)) {
+    await t.test(name, () => {
+      const harness = createHarness({ transactionRows: [original] })
+      const response = responseBody(harness.call('handleRequest_', {
+        idToken: 'token',
+        action: 'transactions.update',
+        id: original.id,
+        expectedUpdatedAt,
+        transaction: input,
+      }))
+      assert.equal(response.error.code, 'VALIDATION_ERROR')
+      assert.equal(harness.batches.length, 0)
+    })
+  }
+})
+
 test('malformed JSON returns INVALID_REQUEST', () => {
   const harness = createHarness()
   const response = responseBody(harness.call('doPost', { postData: { contents: '{bad json' } }))
@@ -250,7 +311,7 @@ test('unauthorized transaction operation returns AUTHORIZATION_ERROR', () => {
 
 test('missing transaction returns NOT_FOUND', () => {
   const harness = createHarness()
-  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.update', id: 'missing', transaction: input }))
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.update', id: 'missing', expectedUpdatedAt: original.updatedAt, transaction: input }))
   assert.equal(response.error.code, 'NOT_FOUND')
 })
 
@@ -263,7 +324,7 @@ test('requestId replay mismatch returns CONFLICT', () => {
 test('duplicate transaction IDs return CONFLICT', () => {
   const duplicate = { ...original, id: 'duplicate' }
   const harness = createHarness({ transactionRows: [duplicate, duplicate] })
-  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.update', id: 'duplicate', transaction: input }))
+  const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.update', id: 'duplicate', expectedUpdatedAt: original.updatedAt, transaction: input }))
   assert.equal(response.error.code, 'CONFLICT')
 })
 

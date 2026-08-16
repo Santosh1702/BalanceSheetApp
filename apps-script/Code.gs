@@ -33,7 +33,7 @@ function handleRequest_(request) {
       case 'auth.me': result = authenticatedProfile_(user); break;
       case 'transactions.list': result = listTransactions_(user, request.filters === undefined ? {} : request.filters); break;
       case 'transactions.create': result = createTransaction_(user, request.requestId, request.transaction); break;
-      case 'transactions.update': result = updateTransaction_(user, request.id, request.transaction); break;
+      case 'transactions.update': result = updateTransaction_(user, request.id, request.expectedUpdatedAt, request.transaction); break;
       case 'transactions.delete': result = deleteTransaction_(user, request.id); break;
       case 'health': result = { status: 'ok' }; break;
       default: throw apiError_(ERROR_CODES.INVALID_REQUEST, 'Unsupported API action.');
@@ -121,13 +121,15 @@ function createTransaction_(user, requestId, transaction) {
   });
 }
 
-function updateTransaction_(user, id, transaction) {
+function updateTransaction_(user, id, expectedUpdatedAt, transaction) {
   requireAdmin_(user);
   const normalizedId = validateTransactionId_(id);
+  const expectedVersion = validateExpectedUpdatedAt_(expectedUpdatedAt);
   const input = validateTransaction_(transaction);
   return withScriptLock_(function () {
     const existing = findRowById_(SHEET_NAMES.TRANSACTIONS, normalizedId);
     if (!existing) throw apiError_(ERROR_CODES.NOT_FOUND, 'Transaction not found.');
+    if (existing.row.updatedAt !== expectedVersion) throw apiError_(ERROR_CODES.CONFLICT, 'The transaction was changed by another operation. Refresh and try again.');
     const record = {
       id: existing.row.id,
       person: input.person,
@@ -199,6 +201,10 @@ function validateCreateRequestId_(requestId) {
   if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId.trim())) throw apiError_(ERROR_CODES.VALIDATION, 'Create requestId must be a canonical UUID.');
   return requestId.trim().toLowerCase();
 }
+function validateExpectedUpdatedAt_(value) {
+  if (!isIsoTimestamp_(value)) throw apiError_(ERROR_CODES.VALIDATION, 'Transaction expectedUpdatedAt must be an ISO timestamp with UTC millisecond precision.');
+  return value;
+}
 function isBusinessDate_(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parts = value.split('-').map(Number);
@@ -206,6 +212,12 @@ function isBusinessDate_(value) {
   if (year < 1 || month < 1 || month > 12 || day < 1) return false;
   const daysInMonth = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day <= daysInMonth[month - 1];
+}
+function isIsoTimestamp_(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{3})Z$/);
+  if (!match || !isBusinessDate_(match[1])) return false;
+  return Number(match[2]) <= 23 && Number(match[3]) <= 59 && Number(match[4]) <= 59;
 }
 function isPlainObject_(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.prototype.toString.call(value) === '[object Object]'; }
 function transactionResponse_(record) { return { id: record.id, person: record.person, type: record.type, amount: record.amount, date: record.date, mode: record.mode, note: record.note, createdBy: record.createdBy, createdAt: record.createdAt, updatedBy: record.updatedBy, updatedAt: record.updatedAt }; }
