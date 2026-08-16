@@ -39,7 +39,7 @@ function auditRow(overrides = {}) {
   }
 }
 
-function createHarness({ auditRows = [], transactionRows = [], users = [{ email: user.email, name: user.name, role: user.role, person: user.person, active: true }], headers = {}, properties = { SHEET_ID: 'spreadsheet-1', GOOGLE_CLIENT_ID: 'client-1' }, lockAvailable = true, batchError = null, tokenInfoBody = JSON.stringify({ aud: 'client-1', email_verified: 'true', email: user.email, name: user.name }), fetchError = null } = {}) {
+function createHarness({ auditRows = [], transactionRows = [], users = [{ email: user.email, name: user.name, role: user.role, person: user.person, active: true }], headers = {}, properties = { SHEET_ID: 'spreadsheet-1', GOOGLE_CLIENT_ID: 'client-1' }, lockAvailable = true, batchError = null, tokenInfoBody = JSON.stringify({ aud: 'client-1', email_verified: 'true', email: user.email, name: user.name }), fetchError = null, spreadsheetTimeZone = 'Etc/UTC', formatDate = () => { throw new Error('Unexpected date formatting') } } = {}) {
   const batches = []
   let uuidIndex = 0
   const sheetData = {
@@ -56,17 +56,18 @@ function createHarness({ auditRows = [], transactionRows = [], users = [{ email:
         getLastColumn: () => data.headers.length,
         getRange: () => ({ getValues: () => [data.headers] }),
         getSheetId: () => data.id,
-        getParent: () => ({ getSpreadsheetTimeZone: () => 'Etc/UTC' }),
+        getParent: () => ({ getSpreadsheetTimeZone: () => spreadsheetTimeZone }),
       }
     },
   }
   const context = vm.createContext({
     console,
+    Date,
     SpreadsheetApp: { openById: () => spreadsheet },
     Sheets: { Spreadsheets: { batchUpdate: (body, spreadsheetId) => { if (batchError) throw batchError; batches.push({ body, spreadsheetId }) } } },
     Utilities: {
       getUuid: () => ['transaction-new', 'audit-new'][uuidIndex++] ?? `uuid-${uuidIndex}`,
-      formatDate: () => { throw new Error('Unexpected date formatting') },
+      formatDate,
     },
     LockService: { getScriptLock: () => ({ tryLock: () => lockAvailable, releaseLock: () => {} }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || null }) },
@@ -225,6 +226,46 @@ test('matching expectedUpdatedAt updates the transaction and appends its audit a
   assert.deepEqual(auditCells[auditHeaders.indexOf('entityId')], { userEnteredValue: { stringValue: original.id } })
 })
 
+test('successful update audit contains exact previous and new transaction values', () => {
+  const harness = createHarness({ transactionRows: [original] })
+  const result = plain(harness.call('updateTransaction_', user, original.id, original.updatedAt, { ...input, amount: 1250 }))
+  const requests = plain(harness.batches[0].body.requests)
+  const auditCells = requests[1].appendCells.rows[0].values
+  const auditValue = (header) => auditCells[auditHeaders.indexOf(header)].userEnteredValue.stringValue
+
+  assert.equal(auditValue('action'), 'UPDATE')
+  assert.equal(auditValue('entityId'), original.id)
+  assert.equal(auditValue('performedBy'), user.email)
+  assert.equal(auditValue('requestId'), '')
+  assert.deepEqual(JSON.parse(auditValue('previousValue')), original)
+  assert.deepEqual(JSON.parse(auditValue('newValue')), result)
+  assert.equal(result.createdBy, original.createdBy)
+  assert.equal(result.createdAt, original.createdAt)
+  assert.equal(result.updatedBy, user.email)
+  assert.equal(JSON.parse(auditValue('newValue')).updatedAt, result.updatedAt)
+})
+
+test('successful delete atomically deletes the transaction and appends its exact audit record', () => {
+  const harness = createHarness({ transactionRows: [original] })
+  const result = plain(harness.call('deleteTransaction_', user, original.id))
+
+  assert.deepEqual(result, { id: original.id })
+  assert.equal(harness.batches.length, 1)
+  const requests = plain(harness.batches[0].body.requests)
+  assert.equal(requests.length, 2)
+  assert.deepEqual(requests[0].deleteDimension.range, { sheetId: 101, dimension: 'ROWS', startIndex: 1, endIndex: 2 })
+  assert.equal(requests[1].appendCells.sheetId, 202)
+
+  const auditCells = requests[1].appendCells.rows[0].values
+  const auditValue = (header) => auditCells[auditHeaders.indexOf(header)].userEnteredValue.stringValue
+  assert.equal(auditValue('action'), 'DELETE')
+  assert.equal(auditValue('entityId'), original.id)
+  assert.equal(auditValue('performedBy'), user.email)
+  assert.equal(auditValue('requestId'), '')
+  assert.deepEqual(JSON.parse(auditValue('previousValue')), original)
+  assert.equal(auditValue('newValue'), '')
+})
+
 test('stale expectedUpdatedAt returns CONFLICT without transaction or audit writes', () => {
   const harness = createHarness({ transactionRows: [original] })
   const response = responseBody(harness.call('handleRequest_', {
@@ -307,6 +348,98 @@ test('unauthorized transaction operation returns AUTHORIZATION_ERROR', () => {
   const harness = createHarness({ users: [member] })
   const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.create', requestId, transaction: { ...input, type: 'MONEY_GIVEN' } }))
   assert.equal(response.error.code, 'AUTHORIZATION_ERROR')
+})
+
+test('member transaction permissions remain enforced by the request handler', async (t) => {
+  const member = { email: user.email, name: 'Member', role: 'member', person: 'Sagar', active: true }
+  const ownTransaction = { ...original, id: 'own-transaction', person: 'Sagar' }
+  const otherTransaction = { ...original, id: 'other-transaction', person: 'Tejas' }
+
+  await t.test('listing returns only the member person records', () => {
+    const harness = createHarness({ users: [member], transactionRows: [ownTransaction, otherTransaction] })
+    const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'transactions.list' }))
+    assert.equal(response.ok, true)
+    assert.deepEqual(response.data.map((transaction) => transaction.id), [ownTransaction.id])
+  })
+
+  const deniedMutations = {
+    'deposit for the other person': { action: 'transactions.create', requestId, transaction: { ...input, person: 'Tejas' } },
+    'money given creation': { action: 'transactions.create', requestId, transaction: { ...input, type: 'MONEY_GIVEN' } },
+    update: { action: 'transactions.update', id: original.id, expectedUpdatedAt: original.updatedAt, transaction: input },
+    delete: { action: 'transactions.delete', id: original.id },
+  }
+
+  for (const [name, request] of Object.entries(deniedMutations)) {
+    await t.test(name, () => {
+      const harness = createHarness({ users: [member], transactionRows: [original] })
+      const response = responseBody(harness.call('handleRequest_', { idToken: 'token', ...request }))
+      assert.equal(response.error.code, 'AUTHORIZATION_ERROR')
+      assert.equal(harness.batches.length, 0)
+    })
+  }
+})
+
+test('invalid Users sheet authorization metadata fails closed', async (t) => {
+  const cases = {
+    'unsupported role': { role: 'owner', person: '' },
+    'member missing person': { role: 'member', person: '' },
+    'member unsupported person': { role: 'member', person: 'Other' },
+    'admin unsupported non-empty person': { role: 'admin', person: 'Other' },
+  }
+
+  for (const [name, metadata] of Object.entries(cases)) {
+    await t.test(name, () => {
+      const invalidUser = { email: user.email, name: user.name, active: true, ...metadata }
+      const harness = createHarness({ users: [invalidUser] })
+      const response = responseBody(harness.call('handleRequest_', { idToken: 'token', action: 'auth.me' }))
+      assert.equal(response.error.code, 'CONFIGURATION_ERROR')
+    })
+  }
+})
+
+test('transaction dates from Sheets use the spreadsheet timezone for business-date normalization', () => {
+  const sheetDate = new Date('2026-08-12T20:00:00.000Z')
+  const formatCalls = []
+  const harness = createHarness({
+    transactionRows: [{ ...original, date: sheetDate }],
+    spreadsheetTimeZone: 'Asia/Kolkata',
+    formatDate: (value, timezone, pattern) => {
+      formatCalls.push({ value, timezone, pattern })
+      return '2026-08-13'
+    },
+  })
+
+  const rows = plain(harness.call('getRows_', 'Transactions'))
+  assert.equal(rows[0].date, '2026-08-13')
+  assert.equal(formatCalls.length, 1)
+  assert.equal(formatCalls[0].value, sheetDate)
+  assert.equal(formatCalls[0].timezone, 'Asia/Kolkata')
+  assert.equal(formatCalls[0].pattern, 'yyyy-MM-dd')
+})
+
+test('unknown transaction and filter fields are rejected strictly', async (t) => {
+  await t.test('transaction mutation payload', () => {
+    const harness = createHarness()
+    const response = responseBody(harness.call('handleRequest_', {
+      idToken: 'token',
+      action: 'transactions.create',
+      requestId,
+      transaction: { ...input, createdBy: 'attacker@example.com' },
+    }))
+    assert.equal(response.error.code, 'VALIDATION_ERROR')
+    assert.equal(harness.batches.length, 0)
+  })
+
+  await t.test('transaction filters', () => {
+    const harness = createHarness({ transactionRows: [original] })
+    const response = responseBody(harness.call('handleRequest_', {
+      idToken: 'token',
+      action: 'transactions.list',
+      filters: { unsupported: true },
+    }))
+    assert.equal(response.error.code, 'VALIDATION_ERROR')
+    assert.equal(harness.batches.length, 0)
+  })
 })
 
 test('missing transaction returns NOT_FOUND', () => {
