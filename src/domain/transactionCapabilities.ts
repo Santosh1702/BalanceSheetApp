@@ -3,7 +3,7 @@ import type { AuthUser } from '../types/auth'
 import { TransactionType } from '../types/transaction'
 import type { Transaction } from '../types/transaction'
 
-type TransactionActor = Pick<AuthUser, 'role' | 'person'>
+export type TransactionActor = Pick<AuthUser, 'role' | 'person'>
 type TransactionTarget = Pick<Transaction, 'person' | 'type'>
 
 export function canCreateTransaction(actor: TransactionActor, target: TransactionTarget) {
