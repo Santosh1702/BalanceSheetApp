@@ -1,0 +1,12 @@
+.calendar-page { display:grid; gap:16px; }
+.calendar-page__toolbar { align-items:center; display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; }
+.calendar-page__person { min-width:160px; }
+.calendar-page__content { display:grid; gap:16px; }
+.calendar-page__calendar { display:grid; gap:16px; min-width:0; padding:12px; }
+.calendar-page__transactions { align-content:start; display:grid; gap:12px; min-width:0; padding:16px; }
+.calendar-page__transactions-heading { align-items:center; display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; }
+.calendar-page__transaction-list { display:grid; gap:8px; }
+.calendar-transaction__amount { font-weight:700; }
+.calendar-transaction__amount--deposit { color:#15803d; }
+.calendar-transaction__amount--withdrawal { color:#dc2626; }
+@media (min-width:900px) { .calendar-page__content { grid-template-columns:minmax(0, 1.45fr) minmax(280px, .75fr); } .calendar-page__calendar { padding:16px; } }
