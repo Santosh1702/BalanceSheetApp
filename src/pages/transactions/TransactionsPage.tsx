@@ -21,11 +21,13 @@ import dayjs from 'dayjs'
 import { useCallback, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { canDeleteTransaction, canEditTransaction } from '../../domain/transactionCapabilities'
 import { useAuth } from '../../hooks/useAuth'
 import { transactionService } from '../../services/transactionService'
 import { UserRole } from '../../types/auth'
 import { PaymentMode, Person, TransactionType } from '../../types/transaction'
 import type { Transaction, TransactionInput } from '../../types/transaction'
+import { formatTransactionType } from '../pageUtils'
 import './TransactionsPage.css'
 
 const schema = z.object({
@@ -34,12 +36,12 @@ const schema = z.object({
   amount: z.coerce.number().positive('Enter an amount greater than zero.'),
   date: z.string().min(1, 'Choose a transaction date.'),
   mode: z.enum([PaymentMode.OnlineTransfer, PaymentMode.Cash]),
-  note: z.string().trim().min(1, 'Enter a short note.'),
+  note: z.string().trim(),
+}).superRefine((transaction, context) => {
+  if (transaction.type === TransactionType.MoneyGiven && transaction.note.length === 0) {
+    context.addIssue({ code: 'custom', message: 'Enter a short note.', path: ['note'] })
+  }
 })
-
-function formatTransactionType(type: TransactionType) {
-  return type === TransactionType.Deposit ? 'Deposit' : 'Payment'
-}
 
 function createInputKey(input: TransactionInput) {
   return JSON.stringify({ person: input.person, type: input.type, amount: input.amount, date: input.date, mode: input.mode, note: input.note })
@@ -104,6 +106,8 @@ export function TransactionsPage() {
   })
 
   const isAdmin = user?.role === UserRole.Admin
+  const canEdit = user ? canEditTransaction(user) : false
+  const canDelete = user ? canDeleteTransaction(user) : false
   const personDefault = user?.person ?? Person.Sagar
   const visibleTransactions = (query.data ?? []).filter((transaction) => {
     if (isAdmin) return true
@@ -143,7 +147,6 @@ export function TransactionsPage() {
           )}
 
           {visibleTransactions.map((transaction) => {
-            const canEditCurrent = isAdmin || transaction.person === personDefault
             return (
               <article className="transaction-row" key={transaction.id}>
                 <div>
@@ -158,12 +161,12 @@ export function TransactionsPage() {
                 </div>
                 <Typography className="transaction-note">{transaction.note}</Typography>
                 <div className="transactions-page__actions">
-                  {canEditCurrent && (
+                  {canEdit && (
                     <IconButton aria-label="Edit transaction" onClick={() => startEdit(transaction)}>
                       <EditOutlinedIcon />
                     </IconButton>
                   )}
-                  {isAdmin && (
+                  {canDelete && (
                     <IconButton aria-label="Delete transaction" onClick={() => setConfirmId(transaction.id)}>
                       <DeleteIcon />
                     </IconButton>
