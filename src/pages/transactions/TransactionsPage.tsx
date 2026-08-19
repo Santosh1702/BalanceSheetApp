@@ -55,6 +55,7 @@ export function TransactionsPage() {
     if (isAdmin) return true
     return transaction.person === personDefault
   })
+  const hasCachedData = query.data !== undefined
 
   const startCreate = () => {
     clearCreateRequest()
@@ -80,7 +81,7 @@ export function TransactionsPage() {
       {query.isError && <Alert severity="error">{query.error.message}</Alert>}
       {query.isLoading && <Typography>Loading transactions…</Typography>}
 
-      {!query.isLoading && (
+      {!query.isLoading && (!query.isError || hasCachedData) && (
         <Paper className="transactions-table">
           {visibleTransactions.length === 0 && (
             <div className="transaction-empty">

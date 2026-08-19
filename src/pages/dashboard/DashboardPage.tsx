@@ -70,6 +70,7 @@ export function DashboardPage() {
     if (selectedDate) return aggregates[selectedDate]?.transactions ?? []
     return transactions.filter((transaction) => getBusinessMonth(transaction.date) === month)
   }, [aggregates, month, selectedDate, transactions])
+  const hasCachedData = query.data !== undefined
   const canManage = canEditTransaction(actor) && canDeleteTransaction(actor)
   const canAdd = canCreateTransaction(actor, { person, type: TransactionType.Deposit })
 
@@ -117,34 +118,38 @@ export function DashboardPage() {
       <MemberTabs onChange={selectPerson} people={people} selected={person} />
       {query.isError && <Alert severity="error">{query.error.message}</Alert>}
 
-      <div className="dashboard-kpis">
-        <KpiCard label="Available balance" subtitle={`Through today · ${today}`} tone={availableBalance < 0 ? 'negative' : 'default'} value={query.isLoading ? '…' : currency.format(availableBalance)} />
-        <KpiCard label="Average daily deposit" subtitle={`Current month · ${getCalendarDay(today)} elapsed days`} value={query.isLoading ? '…' : currency.format(averageDailyDeposit)} />
-      </div>
-
-      <div className="dashboard-bento">
-        <div className="dashboard-calendar-pane">
-          <div className="glass-card dashboard-calendar-card">
-            <MonthNavigator month={month} onNext={() => navigateMonth(1)} onPrevious={() => navigateMonth(-1)} onReturnToCurrent={returnToCurrentMonth} />
-            {month !== currentMonth && <Typography className="dashboard-viewing" color="text.secondary" variant="body2">Viewing {dayjs(`${month}-01`).format('MMMM YYYY')}</Typography>}
-            <CalendarGrid aggregates={aggregates} month={month} onSelectDate={selectDate} selectedDate={selectedDate} today={today} />
+      {(!query.isError || hasCachedData) && (
+        <>
+          <div className="dashboard-kpis">
+            <KpiCard label="Available balance" subtitle={`Through today · ${today}`} tone={availableBalance < 0 ? 'negative' : 'default'} value={query.isLoading ? '…' : currency.format(availableBalance)} />
+            <KpiCard label="Average daily deposit" subtitle={`Current month · ${getCalendarDay(today)} elapsed days`} value={query.isLoading ? '…' : currency.format(averageDailyDeposit)} />
           </div>
-          <div className="glass-card dashboard-month-summary"><SelectedMonthSummary totals={monthSummary} /></div>
-        </div>
 
-        <aside className="glass-card dashboard-transactions-pane">
-          <div className="dashboard-feed-heading">
-            <div>
-              <Typography component="h2" variant="h6">Transactions</Typography>
-              <Typography color="text.secondary" variant="body2">{selectedDate ? `Filtered to ${selectedDate}` : dayjs(`${month}-01`).format('MMMM YYYY')}</Typography>
+          <div className="dashboard-bento">
+            <div className="dashboard-calendar-pane">
+              <div className="glass-card dashboard-calendar-card">
+                <MonthNavigator month={month} onNext={() => navigateMonth(1)} onPrevious={() => navigateMonth(-1)} onReturnToCurrent={returnToCurrentMonth} />
+                {month !== currentMonth && <Typography className="dashboard-viewing" color="text.secondary" variant="body2">Viewing {dayjs(`${month}-01`).format('MMMM YYYY')}</Typography>}
+                <CalendarGrid aggregates={aggregates} month={month} onSelectDate={selectDate} selectedDate={selectedDate} today={today} />
+              </div>
+              <div className="glass-card dashboard-month-summary"><SelectedMonthSummary totals={monthSummary} /></div>
             </div>
-            {selectedDate && <Button onClick={() => setSelectedDate(null)}>Clear date</Button>}
+
+            <aside className="glass-card dashboard-transactions-pane">
+              <div className="dashboard-feed-heading">
+                <div>
+                  <Typography component="h2" variant="h6">Transactions</Typography>
+                  <Typography color="text.secondary" variant="body2">{selectedDate ? `Filtered to ${selectedDate}` : dayjs(`${month}-01`).format('MMMM YYYY')}</Typography>
+                </div>
+                {selectedDate && <Button onClick={() => setSelectedDate(null)}>Clear date</Button>}
+              </div>
+              {query.isLoading
+                ? <Typography color="text.secondary">Loading transactions…</Typography>
+                : <TransactionFeed canManage={canManage} emptyMessage={selectedDate ? 'No transactions for this date.' : 'No transactions for this month.'} onDelete={setDeleteTarget} onEdit={startEdit} transactions={feedTransactions} />}
+            </aside>
           </div>
-          {query.isLoading
-            ? <Typography color="text.secondary">Loading transactions…</Typography>
-            : <TransactionFeed canManage={canManage} emptyMessage={selectedDate ? 'No transactions for this date.' : 'No transactions for this month.'} onDelete={setDeleteTarget} onEdit={startEdit} transactions={feedTransactions} />}
-        </aside>
-      </div>
+        </>
+      )}
 
       {canAdd && <Fab aria-label={`Add transaction for ${person}`} className="dashboard-fab" color="primary" onClick={startCreate}><AddOutlinedIcon /></Fab>}
       <TransactionDialog actor={actor} defaultPerson={person} editing={editing} onClose={closeDialog} onSave={(data) => save.mutate(data as TransactionInput)} open={dialogOpen} saving={save.isPending} />
