@@ -9,12 +9,13 @@ import {
   Snackbar,
   Typography,
 } from '@mui/material'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { DeleteTransactionDialog } from '../../components/transactions/DeleteTransactionDialog'
 import { TransactionDialog } from '../../components/transactions/TransactionDialog'
 import { canDeleteTransaction, canEditTransaction } from '../../domain/transactionCapabilities'
 import { useAuth } from '../../hooks/useAuth'
+import { useTransactionMutations } from '../../hooks/useTransactionMutations'
 import { transactionService } from '../../services/transactionService'
 import { UserRole } from '../../types/auth'
 import { Person, TransactionType } from '../../types/transaction'
@@ -22,18 +23,11 @@ import type { Transaction, TransactionInput } from '../../types/transaction'
 import { formatTransactionType } from '../pageUtils'
 import './TransactionsPage.css'
 
-function createInputKey(input: TransactionInput) {
-  return JSON.stringify({ person: input.person, type: input.type, amount: input.amount, date: input.date, mode: input.mode, note: input.note })
-}
-
 export function TransactionsPage() {
   const { user, idToken } = useAuth()
-  const client = useQueryClient()
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [open, setOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const createRequest = useRef<{ id: string; inputKey: string } | null>(null)
 
   const query = useQuery({
     queryKey: ['transactions'],
@@ -41,37 +35,15 @@ export function TransactionsPage() {
     enabled: Boolean(idToken),
   })
 
-  const invalidate = () => client.invalidateQueries({ queryKey: ['transactions'] })
-  const clearCreateRequest = useCallback(() => { createRequest.current = null }, [])
-
-  const save = useMutation({
-    mutationFn: (data: TransactionInput) => {
-      if (editing) return transactionService.update(idToken!, editing.id, editing.updatedAt, data)
-      const inputKey = createInputKey(data)
-      if (!createRequest.current || createRequest.current.inputKey !== inputKey) createRequest.current = { id: crypto.randomUUID(), inputKey }
-      return transactionService.create(idToken!, createRequest.current.id, data)
-    },
-    onSuccess: () => {
-      clearCreateRequest()
+  const { clearCreateRequest, notice, remove, save, setNotice } = useTransactionMutations({
+    editing,
+    idToken,
+    onSaveSuccess: () => {
       setOpen(false)
       setEditing(null)
-      invalidate()
-      setNotice(editing ? 'Transaction updated.' : 'Transaction created.')
     },
-    onError: (error: Error) => {
-      setNotice(error.message)
-    },
-  })
-
-  const remove = useMutation({
-    mutationFn: (id: string) => transactionService.remove(idToken!, id),
-    onSuccess: () => {
+    onDeleteSuccess: () => {
       setDeleteTarget(null)
-      invalidate()
-      setNotice('Transaction deleted.')
-    },
-    onError: (error: Error) => {
-      setNotice(error.message)
     },
   })
 
