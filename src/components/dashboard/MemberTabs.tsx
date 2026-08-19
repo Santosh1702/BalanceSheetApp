@@ -1,10 +1,20 @@
 import { ButtonBase } from '@mui/material'
 import type { Person } from '../../types/transaction'
 
-export function MemberTabs({ people, selected, onChange }: { people: readonly Person[]; selected: Person; onChange: (person: Person) => void }) {
+export function MemberTabs({
+  people,
+  selected,
+  onChange,
+  ariaLabel = 'Dashboard member',
+}: {
+  people: readonly Person[]
+  selected: Person
+  onChange: (person: Person) => void
+  ariaLabel?: string
+}) {
   if (people.length === 0) return null
   return (
-    <div aria-label="Dashboard member" className="dashboard-member-tabs" role="group">
+    <div aria-label={ariaLabel} className="dashboard-member-tabs" role="group">
       {people.map((person) => (
         <ButtonBase
           aria-pressed={person === selected}
@@ -18,4 +28,3 @@ export function MemberTabs({ people, selected, onChange }: { people: readonly Pe
     </div>
   )
 }
-
