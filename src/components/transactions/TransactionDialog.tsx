@@ -35,6 +35,7 @@ const defaultValues: TransactionInput = {
 
 export interface TransactionDialogProps {
   actor: TransactionActor
+  defaultPerson?: Person
   editing: Transaction | null
   onClose: () => void
   onSave: (data: TransactionInput) => void
@@ -42,7 +43,7 @@ export interface TransactionDialogProps {
   saving: boolean
 }
 
-export function TransactionDialog({ actor, editing, onClose, onSave, open, saving }: TransactionDialogProps) {
+export function TransactionDialog({ actor, defaultPerson, editing, onClose, onSave, open, saving }: TransactionDialogProps) {
   const formId = useId()
   const isAdmin = canEditTransaction(actor)
   const userPerson = actor.person ?? Person.Sagar
@@ -59,7 +60,7 @@ export function TransactionDialog({ actor, editing, onClose, onSave, open, savin
       }
       : {
         ...defaultValues,
-        person: isAdmin ? Person.Sagar : userPerson,
+        person: isAdmin ? defaultPerson ?? Person.Sagar : userPerson,
       },
   })
 

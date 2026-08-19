@@ -44,7 +44,7 @@ export function CalendarGrid({ aggregates, month, onSelectDate, selectedDate, to
             onClick={() => onSelectDate(businessDate)}
             type="button"
           >
-            <span className="calendar-day__header"><span>{date.date()}</span>{isToday && <span className="calendar-day__today-label">Today</span>}</span>
+            <span className="calendar-day__header"><span>{date.date()}</span>{isToday && <span aria-hidden="true" className="calendar-day__today-marker" />}</span>
             <span className="calendar-day__amounts">
               {aggregate?.deposited > 0 && (
                 <span aria-hidden="true" className="calendar-day__amount calendar-day__amount--deposit" title={`Deposited ${fullCurrency.format(aggregate.deposited)}`}>

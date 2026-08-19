@@ -2,16 +2,16 @@
 .month-navigator h2 { flex:1; min-width:0; text-align:center; }
 .calendar-grid { display:grid; gap:3px; grid-template-columns:repeat(7, minmax(0, 1fr)); }
 .calendar-grid__weekday { color:#64748b; font-size:.72rem; font-weight:700; padding:4px 0; text-align:center; }
-.calendar-day { appearance:none; background:transparent; border:1px solid transparent; border-radius:8px; color:inherit; cursor:pointer; display:flex; flex-direction:column; font:inherit; min-height:74px; min-width:0; overflow:hidden; padding:6px; text-align:left; }
+.calendar-day { appearance:none; background:transparent; border:1px solid transparent; border-radius:8px; color:inherit; cursor:pointer; display:flex; flex-direction:column; font:inherit; min-height:74px; min-width:0; overflow:hidden; padding:6px; position:relative; text-align:left; }
 .calendar-day:hover { background:rgb(15 23 42 / 5%); }
 .calendar-day:focus-visible { outline:2px solid #2563eb; outline-offset:1px; }
 .calendar-day--adjacent { opacity:.45; }
 .calendar-day--selected { background:rgb(37 99 235 / 10%); border-color:#2563eb; }
 .calendar-day--today { border-color:#7c3aed; }
-.calendar-day__header { align-items:center; display:flex; font-size:.8rem; gap:3px; justify-content:space-between; width:100%; }
-.calendar-day__today-label { font-size:.55rem; font-weight:700; text-transform:uppercase; }
-.calendar-day__amounts { display:flex; flex-direction:column; margin-top:auto; min-width:0; width:100%; }
-.calendar-day__amount { font-size:.64rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.calendar-day__header { align-items:center; display:flex; font-size:.8rem; gap:4px; width:100%; }
+.calendar-day__today-marker { background:#6d4aff; border:2px solid rgb(255 255 255 / 88%); border-radius:50%; box-shadow:0 0 0 1px #6d4aff; height:6px; margin-left:auto; width:6px; }
+.calendar-day__amounts { align-items:stretch; display:flex; flex-direction:column; line-height:1.25; margin-top:auto; max-width:100%; min-width:0; width:100%; }
+.calendar-day__amount { display:block; font-size:.64rem; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; }
 .calendar-day__amount--deposit, .month-summary__value--positive { color:#15803d; }
 .calendar-day__amount--withdrawal, .month-summary__value--negative { color:#dc2626; }
 .month-summary { display:grid; gap:12px; grid-template-columns:repeat(3, minmax(0, 1fr)); }

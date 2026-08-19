@@ -1,0 +1,93 @@
+.admin-dashboard {
+  --dashboard-bg:#f7f8fb;
+  --dashboard-surface:#fff;
+  --dashboard-surface-muted:#f3f5f9;
+  --dashboard-text:#111827;
+  --dashboard-text-secondary:#667085;
+  --dashboard-purple:#6254d9;
+  --dashboard-magenta:#c23eaa;
+  --dashboard-positive:#087a4b;
+  --dashboard-negative:#c94b5c;
+  --dashboard-border:#e3e7ee;
+  --dashboard-shadow:0 12px 32px rgb(23 34 56 / 8%),0 2px 8px rgb(23 34 56 / 4%);
+  --dashboard-brand-gradient:linear-gradient(135deg,#4e5bd5 0%,#713fc2 52%,#c23eaa 100%);
+  background:var(--dashboard-bg);
+  color:var(--dashboard-text);
+  display:grid;
+  gap:14px;
+  margin:-16px;
+  overflow:hidden;
+  padding:14px 16px 32px;
+  position:relative;
+}
+.admin-dashboard .MuiTypography-colorTextSecondary { color:var(--dashboard-text-secondary); }
+.dashboard-header { align-items:flex-start; display:flex; gap:16px; justify-content:space-between; }
+.dashboard-header h1 { color:var(--dashboard-text); font-size:clamp(1.85rem,8vw,3.25rem); font-weight:800; letter-spacing:-.045em; line-height:1.05; }
+.dashboard-eyebrow { color:#5f5ab0; font-size:.7rem; font-weight:750; letter-spacing:.11em; text-transform:uppercase; }
+.dashboard-add-desktop { background:var(--dashboard-brand-gradient) !important; box-shadow:0 9px 20px rgb(103 59 181 / 20%) !important; color:#fff !important; display:none !important; }
+
+.dashboard-member-tabs { background:var(--dashboard-surface); border:1px solid var(--dashboard-border); border-radius:999px; box-shadow:0 5px 16px rgb(23 34 56 / 6%); display:flex; gap:4px; max-width:100%; overflow-x:auto; padding:4px; width:max-content; }
+.dashboard-member-tab { border-radius:999px !important; color:#364152; flex:0 0 auto; min-height:44px; padding:8px 22px !important; transition:background-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.dashboard-member-tab--selected { background:var(--dashboard-brand-gradient) !important; box-shadow:0 8px 18px rgb(105 66 190 / 22%); color:#fff; }
+
+.glass-card { background:var(--dashboard-surface); border:1px solid var(--dashboard-border); border-radius:20px; box-shadow:var(--dashboard-shadow); }
+.dashboard-kpis { display:grid; gap:9px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.dashboard-kpi { min-width:0; overflow:hidden; padding:14px; position:relative; transition:box-shadow .2s ease,transform .2s ease; }
+.dashboard-kpi:hover { box-shadow:0 16px 38px rgb(23 34 56 / 11%); transform:translateY(-2px); }
+.dashboard-kpi__label { color:#667085; font-size:.76rem !important; font-weight:700 !important; letter-spacing:.01em; }
+.dashboard-kpi__value { color:var(--dashboard-text); font-size:clamp(1.25rem,5.5vw,2rem) !important; font-variant-numeric:tabular-nums; font-weight:850 !important; letter-spacing:-.04em; margin:8px 0 4px !important; overflow-wrap:anywhere; }
+.dashboard-kpi:first-child { background:var(--dashboard-brand-gradient); border-color:transparent; box-shadow:0 17px 38px rgb(103 59 181 / 24%); }
+.dashboard-kpi:first-child::after { background:rgb(255 255 255 / 10%); border:1px solid rgb(255 255 255 / 14%); border-radius:50%; content:""; height:120px; pointer-events:none; position:absolute; right:-42px; top:-54px; width:120px; }
+.dashboard-kpi:first-child .dashboard-kpi__label,.dashboard-kpi:first-child .dashboard-kpi__value { color:#fff; }
+.dashboard-kpi:first-child .MuiTypography-colorTextSecondary { color:rgb(255 255 255 / 72%); }
+.dashboard-kpi--negative:first-child .dashboard-kpi__value { color:#fff; }
+.dashboard-kpi:nth-child(2) { background:var(--dashboard-surface); border-color:var(--dashboard-border); box-shadow:var(--dashboard-shadow); }
+
+.dashboard-bento,.dashboard-calendar-pane { display:grid; gap:10px; min-width:0; }
+.dashboard-calendar-card { background:var(--dashboard-surface); border-color:var(--dashboard-border); box-shadow:var(--dashboard-shadow); display:grid; gap:6px; min-width:0; padding:9px 7px 10px; }
+.dashboard-calendar-card .month-navigator h2 { color:var(--dashboard-text); font-weight:750; }
+.dashboard-calendar-card .month-navigator .MuiIconButton-root { color:#737b8c; }
+.dashboard-calendar-card .month-navigator .MuiIconButton-root:hover { background:rgb(98 84 217 / 8%); color:var(--dashboard-purple); }
+.dashboard-viewing { padding:0 8px; text-align:center; }
+.dashboard-month-summary { background:var(--dashboard-surface); padding:13px; }
+.dashboard-transactions-pane { align-content:start; background:var(--dashboard-surface); display:grid; gap:14px; min-width:0; padding:16px; }
+.dashboard-feed-heading { align-items:center; display:flex; gap:8px; justify-content:space-between; }
+.dashboard-feed { display:grid; gap:10px; }
+.dashboard-feed__entry { display:grid; gap:5px; }
+.dashboard-feed__date { color:#70798b; font-weight:700 !important; }
+.dashboard-transaction { align-items:flex-start; background:var(--dashboard-surface); border:1px solid var(--dashboard-border); border-left:3px solid transparent; border-radius:15px; box-shadow:0 5px 16px rgb(23 34 56 / 6%); display:flex; gap:8px; justify-content:space-between; padding:12px; transition:box-shadow .18s ease,opacity .18s ease,transform .18s ease; }
+.dashboard-transaction:hover { box-shadow:0 9px 22px rgb(23 34 56 / 9%); }
+.dashboard-transaction--deposit { border-left-color:var(--dashboard-positive); }
+.dashboard-transaction--withdrawal { border-left-color:var(--dashboard-negative); }
+.dashboard-transaction__body { min-width:0; }
+.dashboard-transaction__body>p:first-child { font-size:1.05rem; font-weight:800; }
+.financial-positive,.admin-dashboard .calendar-day__amount--deposit,.admin-dashboard .month-summary__value--positive { color:var(--dashboard-positive); }
+.financial-negative,.admin-dashboard .calendar-day__amount--withdrawal,.admin-dashboard .month-summary__value--negative { color:var(--dashboard-negative); }
+
+.dashboard-fab { background:var(--dashboard-brand-gradient) !important; box-shadow:0 11px 25px rgb(103 59 181 / 24%) !important; color:#fff !important; justify-self:end; margin-top:2px !important; position:relative !important; transition:box-shadow .16s ease,transform .16s ease !important; }
+.dashboard-fab:active { box-shadow:0 6px 15px rgb(103 59 181 / 20%) !important; transform:scale(.95); }
+.admin-dashboard .calendar-grid__weekday { color:#7a8395; }
+.admin-dashboard .calendar-day { color:#1c2538; transition:background-color .16s ease,border-color .16s ease,transform .16s ease; }
+.admin-dashboard .calendar-day:hover { background:var(--dashboard-surface-muted); }
+.admin-dashboard .calendar-day--adjacent { color:#98a1b2; opacity:.58; }
+.admin-dashboard .calendar-day:active { transform:scale(.96); }
+.admin-dashboard .calendar-day__today-marker { background:var(--dashboard-purple); box-shadow:0 0 0 1px var(--dashboard-purple); }
+.admin-dashboard .calendar-day--today { border-color:rgb(98 84 217 / 44%); box-shadow:inset 0 0 0 1px rgb(98 84 217 / 8%); }
+.admin-dashboard .calendar-day--selected { background:rgb(98 84 217 / 10%); border-color:var(--dashboard-purple); box-shadow:0 3px 9px rgb(98 84 217 / 10%); }
+
+@media (max-width:430px) {
+  .admin-dashboard { gap:11px; margin:-16px; padding:10px 12px 24px; }
+  .dashboard-header { gap:8px; }
+  .dashboard-header h1 { font-size:1.8rem; }
+  .dashboard-header>div>p:last-child { font-size:.85rem; line-height:1.35; }
+  .dashboard-member-tab { min-height:42px; padding:7px 20px !important; }
+  .dashboard-kpi { padding:12px 10px; }
+  .dashboard-kpi__value { font-size:1.12rem !important; margin-block:5px 2px !important; }
+  .dashboard-kpi>p:last-child { font-size:.68rem; line-height:1.25; }
+  .dashboard-calendar-card { padding:7px 4px 8px; }
+  .admin-dashboard .calendar-day { min-height:64px; padding:4px; }
+  .admin-dashboard .calendar-day__amount { font-size:.6rem; line-height:1.22; }
+}
+@media (min-width:700px) { .admin-dashboard { gap:18px; margin:-16px; padding:32px 24px 80px; } .dashboard-add-desktop { display:inline-flex !important; } .dashboard-fab { display:none !important; } .dashboard-kpis { gap:12px; } .dashboard-kpi { padding:22px; } .dashboard-calendar-card { padding:18px; } }
+@media (min-width:1050px) { .admin-dashboard { margin:-32px; padding:38px 32px 64px; } .dashboard-bento { align-items:start; grid-template-columns:minmax(0,1.55fr) minmax(310px,.75fr); } .dashboard-transactions-pane { position:sticky; top:88px; } }
+@media (prefers-reduced-motion:reduce) { .dashboard-member-tab,.dashboard-kpi,.dashboard-transaction,.dashboard-fab,.admin-dashboard .calendar-day { transition:none !important; } .dashboard-kpi:hover,.dashboard-fab:active,.admin-dashboard .calendar-day:active { transform:none; } }
