@@ -7,13 +7,16 @@ import { MonthComparison } from '../../components/reports/MonthComparison'
 import { PeriodSelector } from '../../components/reports/PeriodSelector'
 import { ReportInsight } from '../../components/reports/ReportInsight'
 import { ReportKpiCard } from '../../components/reports/ReportKpiCard'
+import { TrendChart } from '../../components/reports/TrendChart'
 import { getLocalTodayBusinessDate } from '../../domain/businessDate'
 import type { BusinessDate } from '../../domain/businessDate'
 import {
   ReportPeriodPreset,
   calculatePaymentModeBreakdown,
   calculateReportSummary,
+  createDailyTrendBuckets,
   createMonthComparisons,
+  createMonthlyTrendBuckets,
   filterTransactionsForReport,
   findHighestDepositMonth,
   resolveReportPeriod,
@@ -62,6 +65,11 @@ export function ReportsPage() {
     [allTransactions, period, person, today],
   )
   const summary = useMemo(() => calculateReportSummary(transactions, period), [period, transactions])
+  const dailyTrend = preset === ReportPeriodPreset.ThisMonth || preset === ReportPeriodPreset.LastMonth
+  const trendBuckets = useMemo(
+    () => dailyTrend ? createDailyTrendBuckets(transactions, period) : createMonthlyTrendBuckets(transactions, period),
+    [dailyTrend, period, transactions],
+  )
   const comparisons = useMemo(() => createMonthComparisons(transactions, period), [period, transactions])
   const modes = useMemo(() => calculatePaymentModeBreakdown(transactions), [transactions])
   const highestMonth = useMemo(() => findHighestDepositMonth(comparisons), [comparisons])
@@ -109,6 +117,13 @@ export function ReportsPage() {
             <ReportKpiCard label="Net movement" supportingText={`${summary.transactionCount} ${summary.transactionCount === 1 ? 'transaction' : 'transactions'}`} tone={summary.net < 0 ? 'negative' : summary.net > 0 ? 'positive' : 'neutral'} value={currency.format(summary.net)} />
             <ReportKpiCard label="Average daily deposit" supportingText="Calendar-day pace" tone="brand" value={currency.format(summary.averageDailyDeposit)} />
           </div>
+
+          <TrendChart
+            buckets={trendBuckets}
+            deposited={summary.deposited}
+            granularity={dailyTrend ? 'daily' : 'monthly'}
+            withdrawn={summary.withdrawn}
+          />
 
           <div className="reports-composition">
             <MonthComparison comparisons={comparisons} />
