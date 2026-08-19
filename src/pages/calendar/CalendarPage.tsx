@@ -1,25 +1,33 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, CardContent, Chip, MenuItem, Paper, TextField, Typography } from '@mui/material'
+import { Alert, Button, Card, CardContent, MenuItem, Paper, TextField, Typography } from '@mui/material'
 import dayjs from 'dayjs'
+import { CalendarGrid } from '../../components/calendar/CalendarGrid'
+import { MonthNavigator } from '../../components/calendar/MonthNavigator'
+import { SelectedMonthSummary } from '../../components/calendar/SelectedMonthSummary'
+import { getBusinessMonth, getLocalTodayBusinessDate } from '../../domain/businessDate'
+import type { BusinessDate, BusinessMonth } from '../../domain/businessDate'
+import { aggregateTransactionsByDate, calculateSelectedMonthSummary } from '../../domain/transactionCalculations'
 import { useAuth } from '../../hooks/useAuth'
 import { transactionService } from '../../services/transactionService'
 import { UserRole } from '../../types/auth'
-import { Person } from '../../types/transaction'
+import { Person, TransactionType } from '../../types/transaction'
 import type { Transaction } from '../../types/transaction'
 import { PlaceholderPage } from '../PlaceholderPage'
 import { currency, formatMode, formatTransactionType } from '../pageUtils'
+import './CalendarPage.css'
 
-function normalizeBusinessDate(value: string | null | undefined) {
-  if (!value) return ''
-  const raw = String(value).trim()
-  if (!raw) return ''
-  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/)
-  return match ? match[1] : raw
+function moveMonth(month: BusinessMonth, amount: number) {
+  return dayjs(`${month}-01`).add(amount, 'month').format('YYYY-MM') as BusinessMonth
 }
 
 export function CalendarPage() {
   const { idToken, user } = useAuth()
+  const today = getLocalTodayBusinessDate()
+  const currentMonth = getBusinessMonth(today)
+  const [person, setPerson] = useState<Person>(user?.person ?? Person.Sagar)
+  const [month, setMonth] = useState<BusinessMonth>(currentMonth)
+  const [selectedDate, setSelectedDate] = useState<BusinessDate | null>(null)
   const query = useQuery({
     queryKey: ['transactions'],
     queryFn: () => transactionService.list(idToken!),
@@ -30,108 +38,91 @@ export function CalendarPage() {
     if (user?.role === UserRole.Admin) return Object.values(Person)
     return user?.person ? [user.person] : []
   }, [user])
+  const visibleTransactions = useMemo(() => (
+    (query.data ?? []).filter((transaction: Transaction) => transaction.person === person)
+  ), [person, query.data])
+  const dailyAggregates = useMemo(() => aggregateTransactionsByDate(visibleTransactions), [visibleTransactions])
+  const monthSummary = useMemo(
+    () => calculateSelectedMonthSummary(visibleTransactions, person, month),
+    [month, person, visibleTransactions],
+  )
+  const displayedTransactions = useMemo(() => {
+    if (selectedDate) return dailyAggregates[selectedDate]?.transactions ?? []
+    return visibleTransactions.filter((transaction) => getBusinessMonth(transaction.date) === month)
+  }, [dailyAggregates, month, selectedDate, visibleTransactions])
 
-  const [person, setPerson] = useState<Person>(user?.person ?? Person.Sagar)
-  const [month, setMonth] = useState(() => dayjs().startOf('month'))
-  const [selectedDate, setSelectedDate] = useState(() => dayjs().format('YYYY-MM-DD'))
-
-  const visibleTransactions = useMemo(() => {
-    const data = query.data ?? []
-    return data.filter((transaction: Transaction) => transaction.person === person)
-  }, [person, query.data])
-
-  const groupedTransactions = useMemo(() => {
-    return visibleTransactions.reduce<Record<string, Transaction[]>>((accumulator, transaction) => {
-      const key = normalizeBusinessDate(transaction.date)
-      if (!key) return accumulator
-      if (!accumulator[key]) accumulator[key] = []
-      accumulator[key].push(transaction)
-      return accumulator
-    }, {})
-  }, [visibleTransactions])
-
-  const startOffset = month.startOf('month').day()
-  const dayCells = Array.from({ length: 42 }, (_, index) => month.date(index - startOffset + 1))
-  const normalizedSelectedDate = normalizeBusinessDate(selectedDate)
-  const selectedItems = groupedTransactions[normalizedSelectedDate] ?? []
+  const selectDate = (date: BusinessDate) => {
+    setMonth(getBusinessMonth(date))
+    setSelectedDate(date)
+  }
+  const navigateMonth = (amount: number) => {
+    setMonth((current) => moveMonth(current, amount))
+    setSelectedDate(null)
+  }
+  const returnToCurrentMonth = () => {
+    setMonth(currentMonth)
+    setSelectedDate(null)
+  }
 
   return (
     <PlaceholderPage description="Review transactions in a monthly calendar and inspect the details for a selected date." title="Calendar">
       {query.isError && <Alert severity="error">{query.error.message}</Alert>}
-      <div style={{ display: 'grid', gap: 16 }}>
-        <div style={{ alignItems: 'center', display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <TextField select label="Person" value={person} onChange={(event) => setPerson(event.target.value as Person)}>
-            {allowedPeople.map((value) => (
-              <MenuItem key={value} value={value}>{value}</MenuItem>
-            ))}
+      <div className="calendar-page">
+        <div className="calendar-page__toolbar">
+          <TextField
+            className="calendar-page__person"
+            label="Person"
+            onChange={(event) => {
+              setPerson(event.target.value as Person)
+              setSelectedDate(null)
+            }}
+            select
+            value={person}
+          >
+            {allowedPeople.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
           </TextField>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button onClick={() => setMonth((current) => current.subtract(1, 'month'))} variant="outlined">Prev</Button>
-            <Button onClick={() => setMonth(dayjs().startOf('month'))} variant="text">Today</Button>
-            <Button onClick={() => setMonth((current) => current.add(1, 'month'))} variant="outlined">Next</Button>
-          </div>
         </div>
 
-        <Typography variant="h6">{month.format('MMMM YYYY')}</Typography>
+        <SelectedMonthSummary totals={monthSummary} />
 
-        <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-          <Paper sx={{ p: 2 }}>
-            <div style={{ display: 'grid', gap: 4, gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => (
-                <Typography key={label} sx={{ textAlign: 'center', fontWeight: 700 }} variant="body2">{label}</Typography>
-              ))}
-            </div>
-            <div style={{ display: 'grid', gap: 4, gridTemplateColumns: 'repeat(7, 1fr)' }}>
-              {dayCells.map((date) => {
-                const isCurrentMonth = date.month() === month.month()
-                const isoDate = date.format('YYYY-MM-DD')
-                const dailyTransactions = groupedTransactions[isoDate] ?? []
-                const active = isoDate === selectedDate
-                const dailyAmount = dailyTransactions.reduce((sum, transaction) => sum + transaction.amount, 0)
-                return (
-                  <Button
-                    key={isoDate}
-                    onClick={() => setSelectedDate(isoDate)}
-                    sx={{
-                      alignItems: 'flex-start',
-                      border: active ? 1 : 0,
-                      borderColor: 'primary.main',
-                      minHeight: 72,
-                      p: 1,
-                      textAlign: 'left',
-                      opacity: isCurrentMonth ? 1 : 0.5,
-                    }}
-                    variant="text"
-                  >
-                    <Typography variant="body2">{date.date()}</Typography>
-                    {dailyTransactions.length > 0 && (
-                      <Chip
-                        color="success"
-                        label={currency.format(dailyAmount)}
-                        size="small"
-                        sx={{ mt: 0.5, maxWidth: '100%' }}
-                      />
-                    )}
-                  </Button>
-                )
-              })}
-            </div>
+        <div className="calendar-page__content">
+          <Paper className="calendar-page__calendar">
+            <MonthNavigator
+              month={month}
+              onNext={() => navigateMonth(1)}
+              onPrevious={() => navigateMonth(-1)}
+              onReturnToCurrent={returnToCurrentMonth}
+            />
+            <CalendarGrid aggregates={dailyAggregates} month={month} onSelectDate={selectDate} selectedDate={selectedDate} today={today} />
           </Paper>
 
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6">{selectedDate}</Typography>
-            {selectedItems.length === 0 && <Typography color="text.secondary">No transactions for this day.</Typography>}
-            <div style={{ display: 'grid', gap: 8 }}>
-              {selectedItems.map((transaction) => (
-                <Card key={transaction.id} variant="outlined">
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                    <Typography sx={{ fontWeight: 700 }}>{currency.format(transaction.amount)}</Typography>
-                    <Typography variant="body2">{formatTransactionType(transaction.type)} · {formatMode(transaction.mode)}</Typography>
-                    <Typography color="text.secondary" variant="body2">{transaction.note || 'No note'}</Typography>
-                    <Typography color="text.secondary" variant="body2">Created by {transaction.createdBy}</Typography>
-                  </CardContent>
-                </Card>
-              ))}
+          <Paper className="calendar-page__transactions">
+            <div className="calendar-page__transactions-heading">
+              <Typography component="h2" variant="h6">
+                {selectedDate ? `Transactions on ${selectedDate}` : `Transactions in ${dayjs(`${month}-01`).format('MMMM YYYY')}`}
+              </Typography>
+              {selectedDate && <Button onClick={() => setSelectedDate(null)}>Show full month</Button>}
+            </div>
+            {query.isLoading && <Typography>Loading transactions…</Typography>}
+            {!query.isLoading && displayedTransactions.length === 0 && (
+              <Typography color="text.secondary">{selectedDate ? 'No transactions for this day.' : 'No transactions for this month.'}</Typography>
+            )}
+            <div className="calendar-page__transaction-list">
+              {displayedTransactions.map((transaction) => {
+                const isDeposit = transaction.type === TransactionType.Deposit
+                return (
+                  <Card key={transaction.id} variant="outlined">
+                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                      <Typography className={`calendar-transaction__amount ${isDeposit ? 'calendar-transaction__amount--deposit' : 'calendar-transaction__amount--withdrawal'}`}>
+                        {isDeposit ? '+' : '−'} {currency.format(transaction.amount)}
+                      </Typography>
+                      <Typography variant="body2">{formatTransactionType(transaction.type)} · {formatMode(transaction.mode)} · {transaction.date}</Typography>
+                      <Typography color="text.secondary" variant="body2">{transaction.note || 'No note'}</Typography>
+                      <Typography color="text.secondary" variant="body2">Created by {transaction.createdBy}</Typography>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           </Paper>
         </div>
