@@ -50,6 +50,7 @@ export function CalendarPage() {
     if (selectedDate) return dailyAggregates[selectedDate]?.transactions ?? []
     return visibleTransactions.filter((transaction) => getBusinessMonth(transaction.date) === month)
   }, [dailyAggregates, month, selectedDate, visibleTransactions])
+  const hasCachedData = query.data !== undefined
 
   const selectDate = (date: BusinessDate) => {
     setMonth(getBusinessMonth(date))
@@ -83,49 +84,52 @@ export function CalendarPage() {
           </TextField>
         </div>
 
-        <SelectedMonthSummary totals={monthSummary} />
+        {query.isLoading ? <Typography>Loading calendar…</Typography> : (!query.isError || hasCachedData) && (
+          <>
+            <SelectedMonthSummary totals={monthSummary} />
 
-        <div className="calendar-page__content">
-          <Paper className="calendar-page__calendar">
-            <MonthNavigator
-              month={month}
-              onNext={() => navigateMonth(1)}
-              onPrevious={() => navigateMonth(-1)}
-              onReturnToCurrent={returnToCurrentMonth}
-            />
-            <CalendarGrid aggregates={dailyAggregates} month={month} onSelectDate={selectDate} selectedDate={selectedDate} today={today} />
-          </Paper>
+            <div className="calendar-page__content">
+              <Paper className="calendar-page__calendar">
+                <MonthNavigator
+                  month={month}
+                  onNext={() => navigateMonth(1)}
+                  onPrevious={() => navigateMonth(-1)}
+                  onReturnToCurrent={returnToCurrentMonth}
+                />
+                <CalendarGrid aggregates={dailyAggregates} month={month} onSelectDate={selectDate} selectedDate={selectedDate} today={today} />
+              </Paper>
 
-          <Paper className="calendar-page__transactions">
-            <div className="calendar-page__transactions-heading">
-              <Typography component="h2" variant="h6">
-                {selectedDate ? `Transactions on ${selectedDate}` : `Transactions in ${dayjs(`${month}-01`).format('MMMM YYYY')}`}
-              </Typography>
-              {selectedDate && <Button onClick={() => setSelectedDate(null)}>Show full month</Button>}
+              <Paper className="calendar-page__transactions">
+                <div className="calendar-page__transactions-heading">
+                  <Typography component="h2" variant="h6">
+                    {selectedDate ? `Transactions on ${selectedDate}` : `Transactions in ${dayjs(`${month}-01`).format('MMMM YYYY')}`}
+                  </Typography>
+                  {selectedDate && <Button onClick={() => setSelectedDate(null)}>Show full month</Button>}
+                </div>
+                {displayedTransactions.length === 0 && (
+                  <Typography color="text.secondary">{selectedDate ? 'No transactions for this day.' : 'No transactions for this month.'}</Typography>
+                )}
+                <div className="calendar-page__transaction-list">
+                  {displayedTransactions.map((transaction) => {
+                    const isDeposit = transaction.type === TransactionType.Deposit
+                    return (
+                      <Card key={transaction.id} variant="outlined">
+                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                          <Typography className={`calendar-transaction__amount ${isDeposit ? 'calendar-transaction__amount--deposit' : 'calendar-transaction__amount--withdrawal'}`}>
+                            {isDeposit ? '+' : '−'} {currency.format(transaction.amount)}
+                          </Typography>
+                          <Typography variant="body2">{formatTransactionType(transaction.type)} · {formatMode(transaction.mode)} · {transaction.date}</Typography>
+                          <Typography color="text.secondary" variant="body2">{transaction.note || 'No note'}</Typography>
+                          <Typography color="text.secondary" variant="body2">Created by {transaction.createdBy}</Typography>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </Paper>
             </div>
-            {query.isLoading && <Typography>Loading transactions…</Typography>}
-            {!query.isLoading && displayedTransactions.length === 0 && (
-              <Typography color="text.secondary">{selectedDate ? 'No transactions for this day.' : 'No transactions for this month.'}</Typography>
-            )}
-            <div className="calendar-page__transaction-list">
-              {displayedTransactions.map((transaction) => {
-                const isDeposit = transaction.type === TransactionType.Deposit
-                return (
-                  <Card key={transaction.id} variant="outlined">
-                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                      <Typography className={`calendar-transaction__amount ${isDeposit ? 'calendar-transaction__amount--deposit' : 'calendar-transaction__amount--withdrawal'}`}>
-                        {isDeposit ? '+' : '−'} {currency.format(transaction.amount)}
-                      </Typography>
-                      <Typography variant="body2">{formatTransactionType(transaction.type)} · {formatMode(transaction.mode)} · {transaction.date}</Typography>
-                      <Typography color="text.secondary" variant="body2">{transaction.note || 'No note'}</Typography>
-                      <Typography color="text.secondary" variant="body2">Created by {transaction.createdBy}</Typography>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </Paper>
-        </div>
+          </>
+        )}
       </div>
     </PlaceholderPage>
   )
