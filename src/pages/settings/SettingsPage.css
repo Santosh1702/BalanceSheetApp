@@ -1,0 +1,19 @@
+.settings-grid { display:grid; gap:16px; margin:0 auto; max-width:960px; min-width:0; width:100%; }
+.settings-card { min-width:0; }
+.settings-card .MuiCardContent-root { display:grid; gap:18px; padding:20px; }
+.settings-details { display:grid; gap:14px; margin:0; }
+.settings-detail { display:grid; gap:3px; min-width:0; }
+.settings-detail dt { color:var(--mui-palette-text-secondary); font-size:.78rem; }
+.settings-detail dd { font-weight:650; margin:0; overflow-wrap:anywhere; text-transform:none; }
+.settings-capabilities { display:grid; gap:18px; }
+.settings-capabilities>div { display:grid; gap:8px; min-width:0; }
+.settings-chips { display:flex; flex-wrap:wrap; gap:8px; min-width:0; }
+.settings-session { align-items:start; }
+.settings-session>div { display:grid; gap:4px; }
+.settings-session .MuiButton-root { justify-self:start; }
+@media (min-width:700px) {
+  .settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .settings-card--wide { grid-column:1 / -1; }
+  .settings-capabilities { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .settings-session { align-items:center !important; grid-template-columns:minmax(0,1fr) auto; }
+}

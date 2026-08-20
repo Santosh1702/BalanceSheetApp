@@ -27,3 +27,7 @@ export function assertApiConfigured() {
     throw new Error('The Apps Script API URL is missing. Add VITE_API_BASE_URL to .env.local.')
   }
 }
+
+export function isApiConfigured() {
+  return Boolean(apiBaseUrl)
+}
