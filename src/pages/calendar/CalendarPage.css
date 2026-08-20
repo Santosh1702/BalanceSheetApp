@@ -1,6 +1,4 @@
 .calendar-page { display:grid; gap:16px; }
-.calendar-page__toolbar { align-items:center; display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; }
-.calendar-page__person { min-width:160px; }
 .calendar-page__content { display:grid; gap:16px; }
 .calendar-page__calendar { display:grid; gap:16px; min-width:0; padding:12px; }
 .calendar-page__transactions { align-content:start; display:grid; gap:12px; min-width:0; padding:16px; }

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, CardContent, MenuItem, Paper, TextField, Typography } from '@mui/material'
+import { Alert, Button, Card, CardContent, Paper, Typography } from '@mui/material'
 import dayjs from 'dayjs'
 import { CalendarGrid } from '../../components/calendar/CalendarGrid'
 import { MonthNavigator } from '../../components/calendar/MonthNavigator'
 import { SelectedMonthSummary } from '../../components/calendar/SelectedMonthSummary'
+import { MemberTabs } from '../../components/dashboard/MemberTabs'
 import { getBusinessMonth, getLocalTodayBusinessDate } from '../../domain/businessDate'
 import type { BusinessDate, BusinessMonth } from '../../domain/businessDate'
 import { aggregateTransactionsByDate, calculateSelectedMonthSummary } from '../../domain/transactionCalculations'
@@ -69,20 +70,15 @@ export function CalendarPage() {
     <PlaceholderPage description="Review transactions in a monthly calendar and inspect the details for a selected date." title="Calendar">
       {query.isError && <Alert severity="error">{query.error.message}</Alert>}
       <div className="calendar-page">
-        <div className="calendar-page__toolbar">
-          <TextField
-            className="calendar-page__person"
-            label="Person"
-            onChange={(event) => {
-              setPerson(event.target.value as Person)
-              setSelectedDate(null)
-            }}
-            select
-            value={person}
-          >
-            {allowedPeople.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-          </TextField>
-        </div>
+        <MemberTabs
+          ariaLabel="Calendar member"
+          onChange={(nextPerson) => {
+            setPerson(nextPerson)
+            setSelectedDate(null)
+          }}
+          people={allowedPeople}
+          selected={person}
+        />
 
         {query.isLoading ? <Typography>Loading calendar…</Typography> : (!query.isError || hasCachedData) && (
           <>

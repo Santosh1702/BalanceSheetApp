@@ -1,5 +1,6 @@
 import { ButtonBase } from '@mui/material'
 import type { Person } from '../../types/transaction'
+import './MemberTabs.css'
 
 export function MemberTabs({
   people,
@@ -14,11 +15,11 @@ export function MemberTabs({
 }) {
   if (people.length === 0) return null
   return (
-    <div aria-label={ariaLabel} className="dashboard-member-tabs" role="group">
+    <div aria-label={ariaLabel} className="member-tabs" role="group">
       {people.map((person) => (
         <ButtonBase
           aria-pressed={person === selected}
-          className={`dashboard-member-tab${person === selected ? ' dashboard-member-tab--selected' : ''}`}
+          className={`member-tab${person === selected ? ' member-tab--selected' : ''}`}
           key={person}
           onClick={() => onChange(person)}
         >

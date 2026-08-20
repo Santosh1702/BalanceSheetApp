@@ -17,9 +17,6 @@
 .reports-header h1 { color:var(--report-text); font-size:clamp(1.85rem,8vw,3rem); font-weight:800; letter-spacing:-.04em; }
 .reports-eyebrow { color:var(--report-brand); font-size:.7rem; font-weight:750; letter-spacing:.11em; text-transform:uppercase; }
 .reports-controls { align-items:flex-start; display:grid; gap:14px; }
-.reports-page .dashboard-member-tabs { background:var(--report-surface); border:1px solid var(--report-border); border-radius:999px; box-shadow:0 5px 16px rgb(23 34 56 / 6%); display:flex; gap:4px; max-width:100%; overflow-x:auto; padding:4px; width:max-content; }
-.reports-page .dashboard-member-tab { border-radius:999px; color:var(--mui-palette-text-secondary); flex:0 0 auto; min-height:44px; padding:8px 22px; }
-.reports-page .dashboard-member-tab--selected { background:linear-gradient(135deg,#4e5bd5,#713fc2); box-shadow:0 8px 18px rgb(105 66 190 / 20%); color:#fff; }
 .report-period-control { align-items:center; display:flex; flex-wrap:wrap; gap:12px; }
 .report-period-select { min-width:170px; }
 .report-period-caption { color:var(--report-text); font-weight:700 !important; }
