@@ -1,16 +1,19 @@
-.transactions-page { display:grid; gap:24px; }
-.transactions-page__heading { align-items:flex-start; display:flex; flex-direction:column; gap:16px; justify-content:space-between; }
-.transactions-page__actions { display:flex; gap:8px; justify-content:flex-end; }
-.transactions-table { display:grid; gap:0; overflow:hidden; }
-.transaction-row { align-items:center; border-bottom:1px solid rgb(100 116 139 / 14%); display:grid; gap:12px; grid-template-columns:1fr auto; padding:16px; }
+.transactions-page { display:grid; gap:20px; margin:0 auto; max-width:1100px; min-width:0; }
+.transactions-page__heading { align-items:flex-start; display:flex; flex-direction:column; gap:14px; justify-content:space-between; }
+.transactions-page__heading h1 { color:var(--text-primary); }
+.transactions-page__actions { display:flex; gap:6px; justify-content:flex-end; }
+.transactions-page__actions .MuiIconButton-root { color:var(--text-secondary); }
+.transactions-page__actions .MuiIconButton-root:hover { background:var(--surface-muted); color:var(--brand-primary); }
+.transactions-page__actions .MuiIconButton-root:last-child:hover { color:var(--negative); }
+.transactions-table { background:var(--surface) !important; border:1px solid var(--border); border-radius:16px !important; box-shadow:var(--shadow-soft) !important; display:grid; gap:0; overflow:hidden; }
+.transaction-row { align-items:center; border-bottom:1px solid var(--border); display:grid; gap:10px; grid-template-columns:minmax(0,1fr) auto; padding:13px 14px; transition:background-color .16s ease; }
+.transaction-row:hover { background:var(--surface-muted); }
 .transaction-row:last-child { border-bottom:0; }
-.transaction-empty { padding:24px; }
-.amount { font-weight:700; }
-.amount--deposit { color:#16a34a; }
-.amount--money-given { color:#dc2626; }
-.transaction-note { display:none; }
-@media (min-width:720px) {
-  .transactions-page__heading { flex-direction:row; }
-  .transaction-row { grid-template-columns:1.2fr .8fr 1fr auto; }
-  .transaction-note { display:block; }
-}
+.transaction-row>div { min-width:0; }
+.transaction-empty { padding:24px; text-align:center; }
+.amount { font-variant-numeric:tabular-nums; font-weight:800; text-align:right; }
+.amount--deposit { color:var(--positive); }
+.amount--money-given { color:var(--negative); }
+.transaction-note { color:var(--text-secondary); display:none; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (min-width:720px) { .transactions-page__heading { align-items:center; flex-direction:row; }.transaction-row { gap:16px; grid-template-columns:1.1fr .72fr 1fr auto; padding:15px 18px; }.transaction-note { display:block; } }
+@media (prefers-reduced-motion:reduce) { .transaction-row { transition:none; } }

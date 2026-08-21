@@ -1,19 +1,20 @@
 .settings-grid { display:grid; gap:16px; margin:0 auto; max-width:960px; min-width:0; width:100%; }
-.settings-card { min-width:0; }
+.settings-card { background:var(--surface) !important; border:1px solid var(--border) !important; border-radius:16px !important; box-shadow:var(--shadow-soft); min-width:0; }
 .settings-card .MuiCardContent-root { display:grid; gap:18px; padding:20px; }
-.settings-details { display:grid; gap:14px; margin:0; }
-.settings-detail { display:grid; gap:3px; min-width:0; }
-.settings-detail dt { color:var(--mui-palette-text-secondary); font-size:.78rem; }
-.settings-detail dd { font-weight:650; margin:0; overflow-wrap:anywhere; text-transform:none; }
+.settings-card h2 { border-left:3px solid var(--brand-primary); color:var(--text-primary); font-weight:800; padding-left:9px; }
+.settings-card:nth-child(2) h2,.settings-card:last-child h2 { border-left-color:var(--brand-secondary); }
+.settings-details { display:grid; gap:0; margin:0; }
+.settings-detail { border-bottom:1px solid var(--border); display:grid; gap:3px; min-width:0; padding:11px 0; }
+.settings-detail:first-child { padding-top:0; }
+.settings-detail:last-child { border-bottom:0; padding-bottom:0; }
+.settings-detail dt { color:var(--text-secondary); font-size:.76rem; font-weight:650; }
+.settings-detail dd { color:var(--text-primary); font-weight:750; margin:0; overflow-wrap:anywhere; text-transform:none; }
 .settings-capabilities { display:grid; gap:18px; }
 .settings-capabilities>div { display:grid; gap:8px; min-width:0; }
-.settings-chips { display:flex; flex-wrap:wrap; gap:8px; min-width:0; }
+.settings-chips { display:flex; flex-wrap:wrap; gap:7px; min-width:0; }
+.settings-chips .MuiChip-root { background:var(--surface-muted); border:1px solid color-mix(in srgb,var(--brand-primary) 14%,var(--border)); color:var(--text-primary); font-weight:650; }
+.settings-chips .MuiChip-root:nth-child(even) { background:var(--surface-rose); border-color:color-mix(in srgb,var(--brand-secondary) 12%,var(--border)); }
 .settings-session { align-items:start; }
 .settings-session>div { display:grid; gap:4px; }
 .settings-session .MuiButton-root { justify-self:start; }
-@media (min-width:700px) {
-  .settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .settings-card--wide { grid-column:1 / -1; }
-  .settings-capabilities { grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .settings-session { align-items:center !important; grid-template-columns:minmax(0,1fr) auto; }
-}
+@media (min-width:700px) { .settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.settings-card--wide { grid-column:1 / -1; }.settings-capabilities { grid-template-columns:repeat(3,minmax(0,1fr)); }.settings-session { align-items:center !important; grid-template-columns:minmax(0,1fr) auto; } }

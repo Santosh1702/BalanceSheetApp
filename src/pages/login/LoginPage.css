@@ -1,1 +1,5 @@
-.login-page { align-items:center; display:flex; justify-content:center; min-height:100dvh; padding:24px; }.login-card { display:grid; gap:24px; max-width:440px; padding:32px; width:100%; }.login-brand { align-items:center; color:#2563eb; display:flex; gap:10px; }.login-brand svg { background:#2563eb; border-radius:10px; color:#fff; padding:7px; }
+.login-page { align-items:center; background:var(--app-bg); display:flex; justify-content:center; min-height:100dvh; padding:24px; }
+.login-card { background:var(--surface) !important; border:1px solid var(--border); border-radius:20px !important; box-shadow:var(--shadow-strong) !important; display:grid; gap:24px; max-width:440px; padding:32px; width:100%; }
+.login-brand { align-items:center; color:var(--text-primary); display:flex; gap:10px; }
+.login-brand svg { background:var(--brand-gradient); border-radius:11px; box-shadow:0 6px 14px rgb(91 33 182 / 20%); color:#fff; padding:7px; }
+@media (max-width:430px) { .login-page { padding:16px; }.login-card { padding:24px 20px; } }

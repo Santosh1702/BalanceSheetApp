@@ -1,2 +1,4 @@
-.transaction-form { display:grid; gap:16px; padding-top:8px; }
-
+.transaction-form { display:grid; gap:14px; padding-top:8px; }
+.transaction-form .MuiFormHelperText-root { margin-left:4px; }
+.transaction-form input { font-variant-numeric:tabular-nums; }
+@media (max-width:430px) { .MuiDialog-paper { margin:16px !important; max-height:calc(100% - 32px) !important; width:calc(100% - 32px) !important; }.MuiDialogContent-root { padding-inline:18px !important; }.MuiDialogTitle-root { padding-inline:18px !important; }.MuiDialogActions-root { padding-inline:18px !important; } }
